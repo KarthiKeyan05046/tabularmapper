@@ -123,3 +123,38 @@ def test_process_file_learns_via_learn_store():
     # debit/credit are gated -> they land in pending, not auto-applied
     pend = {p["field"] for p in s.pending()}
     assert {"debit", "credit"} & pend
+
+
+def test_harvest_folder(tmp_path):
+    import shutil
+    from ai_matcher import OpenAICompatibleMatcher
+    from learn import harvest_folder
+    shutil.copy(os.path.join(FIX, "05_weird_header.xlsx"), tmp_path / "acme.xlsx")
+    s = _store()
+
+    def transport(messages):
+        return _json.dumps({"3": "debit", "4": "credit"})
+    matcher = OpenAICompatibleMatcher(api_key="x", transport=transport)
+
+    report = harvest_folder(str(tmp_path), s, table_matcher=matcher)
+    assert report["files"] == 1
+    assert not report["errors"]
+    # harvested debit/credit are gated -> pending for review
+    assert {p["field"] for p in s.pending()} >= {"debit", "credit"}
+    assert report["stats"]["pending"] >= 2
+
+
+def test_harvest_deterministic_no_matcher(tmp_path):
+    """Without a matcher, harvest still promotes fuzzy (non-exact) matches."""
+    import openpyxl
+    from learn import harvest_folder
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.append(["Txn Dt", "Naration", "Ref", "Withdrawls", "Deposits"])  # fuzzy, misspelled
+    ws.append(["01-06-2025", "x", "R1", "100", None])
+    ws.append(["02-06-2025", "y", "R2", None, "200"])
+    wb.save(tmp_path / "b.xlsx")
+    s = _store()
+    report = harvest_folder(str(tmp_path), s)   # deterministic only
+    assert report["files"] == 1
+    # something got learned or queued from the fuzzy headers
+    assert s.stats()["applied"] + s.stats()["pending"] >= 1

@@ -106,7 +106,7 @@ class LearnStore:
             return "conflict"
         entry = {"phrase": phrase, "field": field, "source": source,
                  "bank": bank, "ts": _now()}
-        gated = (field in self.gated_fields and source == "ai"
+        gated = (field in self.gated_fields and source in ("ai", "harvest")
                  and not self.auto_apply_gated)
         if gated:
             if not any(p["phrase"] == phrase for p in blob["pending"]):
@@ -148,7 +148,8 @@ class LearnStore:
 
 
 def learn_from_result(result, store: LearnStore, *, min_confidence: int = 85,
-                      methods=("ai",), bank: Optional[str] = None) -> dict:
+                      methods=("ai",), source: str = "ai",
+                      bank: Optional[str] = None) -> dict:
     """Walk a ProcessResult's column maps and teach the store every confident,
     model-resolved (non-exact) mapping. Returns a summary keyed by outcome."""
     summary: dict[str, list] = {
@@ -158,6 +159,43 @@ def learn_from_result(result, store: LearnStore, *, min_confidence: int = 85,
             continue
         if m.confidence < min_confidence:
             continue
-        outcome = store.add(m.raw_header, m.field, source="ai", bank=bank)
+        outcome = store.add(m.raw_header, m.field, source=source, bank=bank)
         summary[outcome].append((m.raw_header, m.field))
     return summary
+
+
+def harvest_folder(folder: str, store: LearnStore, *,
+                   table_matcher=None, min_confidence: int = 85,
+                   methods=("ai", "fuzzy"), recursive: bool = False) -> dict:
+    """Bootstrap the vocabulary from a folder of past statements.
+
+    Runs the mapper over every .xlsx in `folder`, and teaches the store each
+    confident header->field pair that the seed synonyms didn't already resolve
+    exactly (fuzzy + AI matches). Gated fields (debit/credit) land in the pending
+    queue for a quick one-time review. Returns a report.
+
+    Pass a `table_matcher` (OpenAICompatibleMatcher) to also resolve headers that
+    fuzzy can't place; omit it to harvest deterministically only.
+    """
+    import glob
+    from bank_mapper import process_file
+
+    pattern = os.path.join(folder, "**", "*.xlsx") if recursive \
+        else os.path.join(folder, "*.xlsx")
+    report: dict = {"files": 0, "learned": [], "pending": [],
+                    "exists": [], "conflict": [], "skip": [], "errors": []}
+    for path in sorted(glob.glob(pattern, recursive=recursive)):
+        bank = os.path.splitext(os.path.basename(path))[0]
+        try:
+            res = process_file(path, table_matcher=table_matcher)
+        except Exception as exc:  # noqa: BLE001 — a bad file shouldn't abort the batch
+            report["errors"].append((os.path.basename(path), str(exc)))
+            continue
+        report["files"] += 1
+        summ = learn_from_result(res, store, min_confidence=min_confidence,
+                                 methods=methods, source="harvest", bank=bank)
+        for outcome, pairs in summ.items():
+            report.setdefault(outcome, []).extend(
+                (os.path.basename(path), h, f) for h, f in pairs)
+    report["stats"] = store.stats()
+    return report

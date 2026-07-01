@@ -19,6 +19,10 @@ Options:
                                           postgresql:// | memory:// (or env
                                           BANK_MAPPER_CACHE; use env for secrets)
     --no-cache                            disable the mapping cache
+    --learn [URL]                         enable self-learning (store URL optional;
+                                          env BANK_MAPPER_LEARN_STORE / sqlite default)
+    --harvest DIR                         seed the learned vocabulary from a folder
+                                          of .xlsx statements, then exit
     --threshold N                         fuzzy confidence gate (default 80)
 
 Env for --ai: OPENAI_API_KEY, OPENAI_BASE_URL (default OpenAI), OPENAI_MODEL.
@@ -54,6 +58,14 @@ def _build_fallback(kind: str):
     raise ValueError(kind)
 
 
+def _maybe_matcher(args):
+    from ai_matcher import OpenAICompatibleMatcher
+    if not os.getenv("OPENAI_API_KEY"):
+        print("warning: --ai set but OPENAI_API_KEY is empty; the AI call "
+              "will fail and columns stay unmapped.", file=sys.stderr)
+    return OpenAICompatibleMatcher(model=args.model)
+
+
 def _write_output_file(res, out_path: str) -> None:
     """Write the result to disk in the requested format."""
     fmt = res.output.format
@@ -81,7 +93,8 @@ def _write_output_file(res, out_path: str) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Bank statement -> standard schema mapper")
-    ap.add_argument("input")
+    ap.add_argument("input", nargs="?", default=None,
+                    help="input .xlsx (omit when using --harvest)")
     ap.add_argument("output", nargs="?", default=None)
     ap.add_argument("--format", choices=["file", "json", "bytes", "base64", "records"],
                     default="file",
@@ -97,14 +110,42 @@ def main(argv=None) -> int:
                          "postgresql://… | memory:// (or env BANK_MAPPER_CACHE). "
                          "Prefer the env var for URLs containing secrets.")
     ap.add_argument("--no-cache", action="store_true")
+    ap.add_argument("--learn", nargs="?", const="", default=None,
+                    help="enable self-learning; optional store URL "
+                         "(or env BANK_MAPPER_LEARN_STORE / sqlite default)")
+    ap.add_argument("--harvest", default=None, metavar="DIR",
+                    help="bootstrap the learned vocabulary from a folder of "
+                         ".xlsx statements, then exit")
     ap.add_argument("--threshold", type=int, default=80)
     args = ap.parse_args(argv)
 
     # Load the output template + synonyms before processing, so --config (or the
     # env var) actually takes effect instead of the built-in defaults.
-    from bank_mapper import configure
+    from bank_mapper import configure, apply_learned
     configure(args.config or os.getenv("BANK_MAPPER_CONFIG"))
 
+    # Learning: enabled by --learn or --harvest. `--learn` with no value uses the
+    # env/sqlite default; `--learn URL` overrides.
+    learn_store = None
+    if args.learn is not None or args.harvest:
+        from learn import LearnStore
+        learn_store = LearnStore(args.learn or None)
+        apply_learned(learn_store)
+
+    if args.harvest:
+        from learn import harvest_folder
+        matcher = _maybe_matcher(args) if args.ai else None
+        report = harvest_folder(args.harvest, learn_store, table_matcher=matcher)
+        print(f"Harvested {report['files']} file(s) from {args.harvest}")
+        print(f"  learned : {len(report['learned'])}")
+        print(f"  pending : {len(report['pending'])}  (debit/credit await approval)")
+        print(f"  conflicts: {len(report['conflict'])}   errors: {len(report['errors'])}")
+        print(f"  store stats: {report['stats']}")
+        return 0
+
+    if not args.input:
+        print("error: input file required (or use --harvest DIR)", file=sys.stderr)
+        return 2
     if not os.path.exists(args.input):
         print(f"error: input not found: {args.input}", file=sys.stderr)
         return 2
@@ -119,17 +160,12 @@ def main(argv=None) -> int:
     # back to BANK_MAPPER_CACHE or the sqlite default. Never hardcode a secret URL.
     cache = None if args.no_cache else MappingCache(args.cache)
 
-    table_matcher = None
-    if args.ai:
-        from ai_matcher import OpenAICompatibleMatcher
-        if not os.getenv("OPENAI_API_KEY"):
-            print("warning: --ai set but OPENAI_API_KEY is empty; the AI call "
-                  "will fail and columns stay unmapped.", file=sys.stderr)
-        table_matcher = OpenAICompatibleMatcher(model=args.model)
+    table_matcher = _maybe_matcher(args) if args.ai else None
 
     res = process_file(args.input, out_path=out, output_format=args.format,
                        llm_fallback=fallback, table_matcher=table_matcher,
-                       threshold=args.threshold, cache=cache)
+                       threshold=args.threshold, cache=cache,
+                       learn_store=learn_store)
 
     print(f"\nInput : {res.input_path}")
     print(f"Output: {res.output_path}")

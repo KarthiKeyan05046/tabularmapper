@@ -365,6 +365,17 @@ In the API this is automatic: the router learns on every `/map` and exposes
 `GET/POST /statements/learn/{pending,approve,reject}`. Set
 `LearnStore(auto_apply_gated=True)` for a fully unattended loop.
 
+**Bootstrap from your archive.** Seed the vocabulary in one pass from statements
+you already have (`harvest_folder`, or the CLI):
+
+```bash
+python cli.py --harvest ./past_statements --learn sqlite:///learned.db
+# add --ai to also resolve headers fuzzy can't place
+```
+
+It runs the mapper over every `.xlsx`, learns each confident non-exact header,
+and queues debit/credit for a one-time review. Then those banks map exactly.
+
 ## The AI table matcher (new banks, no manual work)
 
 When a statement's header is unknown to the synonym table, one LLM call maps the
