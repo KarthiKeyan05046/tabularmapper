@@ -161,6 +161,27 @@ def test_no_network_without_fallback(monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# In-memory processing (direct binary — no temp file / disk)
+# --------------------------------------------------------------------------
+def test_process_stream_from_bytes_matches_path():
+    import io
+    from bank_mapper import process_stream
+    p = os.path.join(FIX, "01_junk_split.xlsx")
+    with open(p, "rb") as fh:
+        raw = fh.read()
+
+    ref = process_file(p)
+    a = process_stream(raw)                 # bytes
+    b = process_stream(io.BytesIO(raw))     # file-like
+
+    for res in (a, b):
+        assert res.header_index == ref.header_index
+        assert _fields(res) == _fields(ref)
+        assert res.records == ref.records
+        assert res.needs_review is False
+
+
+# --------------------------------------------------------------------------
 # AI table matcher (mocked transport — NO network in tests)
 # --------------------------------------------------------------------------
 import json as _json  # noqa: E402

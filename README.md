@@ -57,6 +57,8 @@ method, transaction count, and any review flags. Options:
 --model NAME                          LLM model (or env OPENAI_MODEL)
 --fallback {none,hashing}             offline per-column fallback
                                       (default: none -> zero network calls)
+--config PATH                         output template + synonyms JSON
+                                      (file / URL / s3://; or env BANK_MAPPER_CONFIG)
 --no-cache                            disable mapping_cache.json
 --threshold N                         fuzzy confidence gate (default 80)
 ```
@@ -278,10 +280,10 @@ with open('meta.json', 'w') as f:
 | Multiple destinations, same data | `output_format="records"` (lazy, fan-out) |
 | Need both raw data + serialized file | `output_format="records"` → access `.records` + `.bytes` |
 
-## Output schema
+## Output schema & config (`schema.py`)
 
-Edit the single constant `OUTPUT_SCHEMA` in `bank_mapper.py`. Default mirrors
-`result-template.xlsx` plus balance:
+The output template and the synonym vocabulary are **configuration, not code**.
+By default they match `result-template.xlsx` plus balance:
 
 ```
 Date | Narration | Reference Number | Debit | Credit | Balance
@@ -290,6 +292,28 @@ Date | Narration | Reference Number | Debit | Credit | Balance
 - `date` → `YYYY-MM-DD` (year-first formats are never day/month-flipped).
 - `debit` / `credit` → positive floats on the correct side. A single signed
   `Amount` column is split: negative → debit, positive → credit.
+
+### Change the template without touching code
+
+Load a config JSON from a file, an HTTP(S) URL, an S3 object, or a dict — see
+`config.example.json` for the shape:
+
+```python
+from bank_mapper import configure
+configure("config.json")                                  # local file
+configure("https://cdn.example.com/bank-config.json")     # any URL (stdlib)
+configure("s3://my-bucket/bank-config.json")              # S3 (presigned URL or boto3)
+# or set the env var once:  BANK_MAPPER_CONFIG=./config.json
+```
+
+Each output column is `{"field", "header", "type"}` where `type` ∈
+`date | money | text`. Renaming a header, reordering, dropping a column, or
+**adding a brand-new column** (e.g. a `value_date`) is a JSON edit — the new
+field is extracted generically by its `type`. The field keys `debit`, `credit`,
+`amount` keep their special reconciliation behavior. On a bad/unreachable config
+source the loader falls back to the built-in defaults, so the service never dies
+on a config typo. Defaults are byte-identical to the previous hardcoded values
+(verified by the test suite).
 
 ## Add a new bank in under 5 minutes
 

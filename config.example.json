@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "output_schema": [
+    {
+      "field": "date",
+      "header": "Date",
+      "type": "date"
+    },
+    {
+      "field": "description",
+      "header": "Narration",
+      "type": "text"
+    },
+    {
+      "field": "reference",
+      "header": "Reference Number",
+      "type": "text"
+    },
+    {
+      "field": "debit",
+      "header": "Debit",
+      "type": "money"
+    },
+    {
+      "field": "credit",
+      "header": "Credit",
+      "type": "money"
+    }
+  ],
+  "critical_fields": [
+    "date"
+  ],
+  "synonyms": {
+    "date": [
+      "date",
+      "txn date",
+      "transaction date",
+      "value date",
+      "posting date",
+      "post date",
+      "tran date",
+      "date of transaction",
+      "trans date",
+      "dt",
+      "booking date",
+      "entry date"
+    ],
+    "description": [
+      "description",
+      "narration",
+      "particulars",
+      "details",
+      "remarks",
+      "transaction details",
+      "transaction remarks",
+      "narrative",
+      "memo",
+      "transaction description",
+      "txn description",
+      "notes",
+      "purpose"
+    ],
+    "reference": [
+      "reference",
+      "reference number",
+      "reference no",
+      "ref no",
+      "ref no.",
+      "ref no./cheque no",
+      "ref no./cheque no.",
+      "cheque no",
+      "cheque no.",
+      "chq no",
+      "chq no.",
+      "ref",
+      "reference id",
+      "utr",
+      "utr no",
+      "instrument no",
+      "cheque/ref no",
+      "chq/ref no",
+      "transaction id",
+      "ref/cheque no"
+    ],
+    "debit": [
+      "debit",
+      "withdrawal",
+      "withdrawals",
+      "withdrawal amt",
+      "withdrawal amount",
+      "withdrawal (dr)",
+      "dr",
+      "dr amount",
+      "debit amount",
+      "debit amt",
+      "paid out",
+      "payments",
+      "money out",
+      "amount debited",
+      "outflow",
+      "debit(dr)",
+      "withdrawal amt."
+    ],
+    "credit": [
+      "credit",
+      "deposit",
+      "deposits",
+      "deposit amt",
+      "deposit amount",
+      "deposit (cr)",
+      "cr",
+      "cr amount",
+      "credit amount",
+      "credit amt",
+      "paid in",
+      "receipts",
+      "money in",
+      "amount credited",
+      "inflow",
+      "credit(cr)",
+      "deposit amt."
+    ],
+    "balance": [
+      "balance",
+      "closing balance",
+      "running balance",
+      "available balance",
+      "balance amount",
+      "bal",
+      "closing bal",
+      "ledger balance",
+      "book balance",
+      "balance (inr)"
+    ],
+    "amount": [
+      "amount",
+      "transaction amount",
+      "txn amount",
+      "amt",
+      "value",
+      "signed amount",
+      "amount (inr)",
+      "amount(dr/cr)",
+      "transaction amt"
+    ]
+  }
+}

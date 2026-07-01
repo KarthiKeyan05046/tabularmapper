@@ -13,6 +13,8 @@ Options:
     --model NAME                          LLM model (or env OPENAI_MODEL)
     --fallback {none,hashing}             offline per-column fallback
                                           (default: none -> zero network calls)
+    --config PATH                         output template + synonyms JSON
+                                          (file / URL / s3://; or env BANK_MAPPER_CONFIG)
     --no-cache                            disable mapping_cache.json
     --threshold N                         fuzzy confidence gate (default 80)
 
@@ -85,9 +87,16 @@ def main(argv=None) -> int:
                     help="LLM table matcher for unknown headers")
     ap.add_argument("--model", default=None, help="LLM model (or env OPENAI_MODEL)")
     ap.add_argument("--fallback", choices=["none", "hashing"], default="none")
+    ap.add_argument("--config", default=None,
+                    help="config JSON (file / URL / s3://); or env BANK_MAPPER_CONFIG")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--threshold", type=int, default=80)
     args = ap.parse_args(argv)
+
+    # Load the output template + synonyms before processing, so --config (or the
+    # env var) actually takes effect instead of the built-in defaults.
+    from bank_mapper import configure
+    configure(args.config or os.getenv("BANK_MAPPER_CONFIG"))
 
     if not os.path.exists(args.input):
         print(f"error: input not found: {args.input}", file=sys.stderr)

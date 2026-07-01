@@ -15,6 +15,7 @@ Design invariants (see BUILD_PROMPT.md):
     confidence for human audit.
 """
 
+
 from __future__ import annotations
 
 import base64
@@ -30,75 +31,41 @@ from dateutil import parser as _dateparser
 from rapidfuzz import fuzz
 
 # --------------------------------------------------------------------------
-# Output schema — single editable constant.
-# Each entry: (field_key, display_header). `field_key` is used internally;
-# `display_header` is what gets written to the output xlsx.
-# Defaults mirror the user's result-template.xlsx, plus balance.
+# Active configuration (output template + synonyms + critical fields).
+# Loaded from schema.py — by default the built-in constants (byte-identical to
+# the previous hardcoded values), or from a JSON file / URL / S3 object / dict
+# via env BANK_MAPPER_CONFIG or a call to configure().
+#
+# These module globals are kept for backward compatibility; everything reads
+# them, and configure() swaps them atomically.
 # --------------------------------------------------------------------------
-OUTPUT_SCHEMA: list[tuple[str, str]] = [
-    ("date", "Date"),
-    ("description", "Narration"),
-    ("reference", "Reference Number"),
-    ("debit", "Debit"),
-    ("credit", "Credit"),
-    ("balance", "Balance"),
-]
+from schema import Config as _Config, load_config as _load_config  # noqa: E402
 
-# Fields whose absence makes a statement un-trustworthy -> needs_review.
-# A statement needs date, plus a way to know money movement: either an
-# explicit debit or credit column, or a single signed `amount` column.
-CRITICAL_FIELDS = {"date"}
+_ACTIVE_CONFIG: _Config = _load_config()
 
-# The fields the mapper is allowed to assign. Includes `amount` (single signed
-# column) which is reconciled into debit/credit during extraction but is not an
-# output column itself.
-ALLOWED_FIELDS: list[str] = [f for f, _ in OUTPUT_SCHEMA] + ["amount"]
+OUTPUT_SCHEMA: list[tuple[str, str]] = _ACTIVE_CONFIG.headers   # [(field, header)]
+SYNONYMS: dict[str, list[str]] = _ACTIVE_CONFIG.synonyms
+CRITICAL_FIELDS: set = set(_ACTIVE_CONFIG.critical_fields)
+ALLOWED_FIELDS: list[str] = _ACTIVE_CONFIG.allowed_fields
+_FIELD_TYPES: dict[str, str] = _ACTIVE_CONFIG.field_types
 
-# --------------------------------------------------------------------------
-# SYNONYMS — the primary accuracy engine.
-# target field -> list of real-world header phrases (lower-cased, stripped).
-# Seed generously; extend freely. Order does not matter.
-# --------------------------------------------------------------------------
-SYNONYMS: dict[str, list[str]] = {
-    "date": [
-        "date", "txn date", "transaction date", "value date", "posting date",
-        "post date", "tran date", "date of transaction", "trans date", "dt",
-        "booking date", "entry date",
-    ],
-    "description": [
-        "description", "narration", "particulars", "details", "remarks",
-        "transaction details", "transaction remarks", "narrative", "memo",
-        "transaction description", "txn description", "notes", "purpose",
-    ],
-    "reference": [
-        "reference", "reference number", "reference no", "ref no", "ref no.",
-        "ref no./cheque no", "ref no./cheque no.", "cheque no", "cheque no.",
-        "chq no", "chq no.", "ref", "reference id", "utr", "utr no",
-        "instrument no", "cheque/ref no", "chq/ref no", "transaction id",
-        "ref/cheque no",
-    ],
-    "debit": [
-        "debit", "withdrawal", "withdrawals", "withdrawal amt", "withdrawal amount",
-        "withdrawal (dr)", "dr", "dr amount", "debit amount", "debit amt",
-        "paid out", "payments", "money out", "amount debited", "outflow",
-        "debit(dr)", "withdrawal amt.",
-    ],
-    "credit": [
-        "credit", "deposit", "deposits", "deposit amt", "deposit amount",
-        "deposit (cr)", "cr", "cr amount", "credit amount", "credit amt",
-        "paid in", "receipts", "money in", "amount credited", "inflow",
-        "credit(cr)", "deposit amt.",
-    ],
-    "balance": [
-        "balance", "closing balance", "running balance", "available balance",
-        "balance amount", "bal", "closing bal", "ledger balance", "book balance",
-        "balance (inr)",
-    ],
-    "amount": [
-        "amount", "transaction amount", "txn amount", "amt", "value",
-        "signed amount", "amount (inr)", "amount(dr/cr)", "transaction amt",
-    ],
-}
+
+def configure(source=None, config: "Optional[_Config]" = None) -> None:
+    """Swap the active configuration at runtime.
+
+    Pass a `config` object, or a `source` for load_config (path / http(s) URL /
+    s3:// / dict). Rebuilds the derived globals and the exact-match lookup so a
+    new output template or synonym set takes effect immediately.
+    """
+    global _ACTIVE_CONFIG, OUTPUT_SCHEMA, SYNONYMS, CRITICAL_FIELDS
+    global ALLOWED_FIELDS, _FIELD_TYPES, _EXACT_LOOKUP
+    _ACTIVE_CONFIG = config if config is not None else _load_config(source)
+    OUTPUT_SCHEMA = _ACTIVE_CONFIG.headers
+    SYNONYMS = _ACTIVE_CONFIG.synonyms
+    CRITICAL_FIELDS = set(_ACTIVE_CONFIG.critical_fields)
+    ALLOWED_FIELDS = _ACTIVE_CONFIG.allowed_fields
+    _FIELD_TYPES = _ACTIVE_CONFIG.field_types
+    _EXACT_LOOKUP = _build_exact_lookup(SYNONYMS)
 
 
 # --------------------------------------------------------------------------
@@ -326,10 +293,15 @@ def detect_header_row(rows: list[list], scan_limit: int = 25) -> HeaderCandidate
 # Stage 2 — column mapping (exact -> fuzzy -> fallback)
 # --------------------------------------------------------------------------
 # Build a flat lookup: phrase -> field, for O(1) exact matching.
-_EXACT_LOOKUP: dict[str, str] = {}
-for _fld, _phrases in SYNONYMS.items():
-    for _p in _phrases:
-        _EXACT_LOOKUP[_norm(_p)] = _fld
+def _build_exact_lookup(synonyms: dict) -> dict:
+    lut: dict[str, str] = {}
+    for _fld, _phrases in synonyms.items():
+        for _p in _phrases:
+            lut[_norm(_p)] = _fld
+    return lut
+
+
+_EXACT_LOOKUP: dict[str, str] = _build_exact_lookup(SYNONYMS)
 
 
 def _fuzzy_best(header: str) -> tuple[Optional[str], int]:
@@ -524,13 +496,12 @@ def extract_records(rows: list[list], header_idx: int,
     Skips non-transaction rows (no date AND no money). Merges multi-line
     descriptions that spill into blank cells below a transaction.
     """
-    ci_date = _field_col(col_maps, "date")
-    ci_desc = _field_col(col_maps, "description")
-    ci_ref = _field_col(col_maps, "reference")
-    ci_debit = _field_col(col_maps, "debit")
-    ci_credit = _field_col(col_maps, "credit")
-    ci_bal = _field_col(col_maps, "balance")
-    ci_amt = _field_col(col_maps, "amount")
+    fields = _ACTIVE_CONFIG.fields          # ordered output field keys
+    types = _FIELD_TYPES                     # field -> "date"|"money"|"text"
+    col_of = {f: _field_col(col_maps, f) for f in fields}
+    ci_debit = col_of.get("debit")
+    ci_credit = col_of.get("credit")
+    ci_amt = _field_col(col_maps, "amount")  # input-only mapping (may be output too)
 
     def cell(r, ci):
         return r[ci] if (ci is not None and ci < len(r)) else None
@@ -540,9 +511,8 @@ def extract_records(rows: list[list], header_idx: int,
         if all(_is_blank(c) for c in r):
             continue
 
-        date = normalize_date(cell(r, ci_date))
+        # --- money reconciliation (debit/credit vs single signed amount) ---
         debit = credit = None
-
         if ci_amt is not None and ci_debit is None and ci_credit is None:
             amt = normalize_amount(cell(r, ci_amt))
             if amt is not None:
@@ -558,31 +528,43 @@ def extract_records(rows: list[list], header_idx: int,
             debit = abs(d) if d is not None else None
             credit = abs(c) if c is not None else None
 
-        desc = cell(r, ci_desc)
-        desc = str(desc).strip() if not _is_blank(desc) else ""
-        ref = cell(r, ci_ref)
-        ref = str(ref).strip() if not _is_blank(ref) else ""
-        bal = normalize_amount(cell(r, ci_bal))
+        # --- build the record, one value per schema field, by type ---
+        rec: dict = {}
+        date_val = None
+        for f in fields:
+            if f == "debit":
+                rec[f] = debit
+            elif f == "credit":
+                rec[f] = credit
+            else:
+                t = types.get(f, "text")
+                v = cell(r, col_of.get(f))
+                if t == "date":
+                    rec[f] = normalize_date(v)
+                    if f == "date":
+                        date_val = rec[f]
+                elif t == "money":
+                    rec[f] = normalize_amount(v)      # balance / amount = signed
+                else:
+                    rec[f] = str(v).strip() if not _is_blank(v) else ""
+        if date_val is None:
+            date_val = rec.get("date")
 
         has_money = debit is not None or credit is not None
+        desc_val = rec.get("description", "")
+
         # multi-line description continuation: a row with only a description
         # and no date/money folds into the previous record.
-        if not date and not has_money and desc and records:
-            records[-1]["description"] = (records[-1]["description"] + " " + desc).strip()
+        if not date_val and not has_money and desc_val and records and "description" in rec:
+            records[-1]["description"] = (
+                records[-1].get("description", "") + " " + desc_val).strip()
             continue
 
         # skip rows that carry no date and no money (pure noise / subtotals)
-        if not date and not has_money:
+        if not date_val and not has_money:
             continue
 
-        records.append({
-            "date": date,
-            "description": desc,
-            "reference": ref,
-            "debit": debit,
-            "credit": credit,
-            "balance": bal,
-        })
+        records.append(rec)
     return records
 
 

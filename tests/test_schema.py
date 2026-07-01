@@ -1,0 +1,130 @@
+"""
+Tests for the externalized schema/config system (schema.py + bank_mapper.configure).
+
+Guarantees:
+  * default config is byte-identical to the legacy hardcoded constants
+  * a custom schema (rename / reorder / drop / ADD a new field) drives extraction
+  * config loads from a JSON file and from an in-memory dict
+  * a bad/unreachable source fails safe to the defaults
+Every test that calls configure() restores defaults afterward.
+"""
+
+import io
+import json
+import os
+import sys
+
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import bank_mapper as bm          # noqa: E402
+import schema                     # noqa: E402
+
+FIX = os.path.join(ROOT, "test_statements")
+SAMPLES = os.path.join(ROOT, "samples")
+
+
+@pytest.fixture(autouse=True)
+def _reset_config():
+    """Ensure every test starts and ends on the default config."""
+    bm.configure()
+    yield
+    bm.configure()
+
+
+def test_default_config_is_legacy_identical():
+    assert bm.OUTPUT_SCHEMA == [
+        ("date", "Date"), ("description", "Narration"),
+        ("reference", "Reference Number"), ("debit", "Debit"),
+        ("credit", "Credit"), ("balance", "Balance"),
+    ]
+    assert bm.SYNONYMS == schema.DEFAULT_SYNONYMS
+    assert bm.CRITICAL_FIELDS == {"date"}
+    assert bm.ALLOWED_FIELDS == ["date", "description", "reference",
+                                 "debit", "credit", "balance", "amount"]
+
+
+def test_default_extraction_unchanged():
+    res = bm.process_file(os.path.join(FIX, "01_junk_split.xlsx"))
+    assert res.header_index == 5
+    assert res.needs_review is False
+    assert list(res.records[0].keys()) == ["date", "description", "reference",
+                                           "debit", "credit", "balance"]
+
+
+def test_custom_schema_rename_reorder_drop():
+    cfg = schema.config_from_dict({
+        "output_schema": [
+            {"field": "date", "header": "When", "type": "date"},
+            {"field": "credit", "header": "In", "type": "money"},
+            {"field": "debit", "header": "Out", "type": "money"},
+        ],
+    })
+    bm.configure(config=cfg)
+    assert [h for _, h in bm.OUTPUT_SCHEMA] == ["When", "In", "Out"]
+    res = bm.process_file(os.path.join(FIX, "01_junk_split.xlsx"))
+    # only the three schema fields appear, in schema order
+    assert list(res.records[0].keys()) == ["date", "credit", "debit"]
+    assert any(r["debit"] == 1299.5 for r in res.records)
+    assert any(r["credit"] == 45000.0 for r in res.records)
+
+
+def test_custom_schema_adds_new_field_type():
+    """A brand-new 'value_date' field is extracted generically by its type."""
+    cfg = schema.config_from_dict({
+        "output_schema": [
+            {"field": "date", "header": "Txn Date", "type": "date"},
+            {"field": "value_date", "header": "Value Date", "type": "date"},
+            {"field": "description", "header": "Description", "type": "text"},
+            {"field": "debit", "header": "Debit", "type": "money"},
+            {"field": "credit", "header": "Credit", "type": "money"},
+        ],
+        "synonyms": dict(schema.DEFAULT_SYNONYMS,
+                         date=["txn date"], value_date=["value date"]),
+    })
+    bm.configure(config=cfg)
+    p = os.path.join(SAMPLES, "PAYIR_FC_SBI_2025.xlsx")
+    if not os.path.exists(p):
+        pytest.skip("sample not present")
+    res = bm.process_file(p)
+    r0 = res.records[0]
+    assert "value_date" in r0 and r0["value_date"]      # new field extracted
+    assert r0["date"] and r0["date"] != None            # original date still there
+
+
+def test_load_config_from_file(tmp_path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({
+        "output_schema": [{"field": "date", "header": "D", "type": "date"},
+                          {"field": "amount", "header": "Amt", "type": "money"}],
+        "synonyms": {"date": ["date"], "amount": ["amount"]},
+    }))
+    cfg = schema.load_config(str(cfg_path))
+    assert [f.field for f in cfg.output_schema] == ["date", "amount"]
+    assert cfg.headers[1] == ("amount", "Amt")
+
+
+def test_bad_source_fails_safe_to_defaults():
+    cfg = schema.load_config("s3://nope/missing.json")     # unreachable
+    assert cfg.fields == ["date", "description", "reference",
+                          "debit", "credit", "balance"]
+    with pytest.raises(Exception):
+        schema.load_config("s3://nope/missing.json", strict=True)
+
+
+def test_serializers_follow_active_schema():
+    cfg = schema.config_from_dict({
+        "output_schema": [{"field": "date", "header": "MyDate", "type": "date"},
+                          {"field": "debit", "header": "MyDebit", "type": "money"},
+                          {"field": "credit", "header": "MyCredit", "type": "money"}],
+    })
+    bm.configure(config=cfg)
+    raw = open(os.path.join(FIX, "01_junk_split.xlsx"), "rb").read()
+    res = bm.process_stream(raw)
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(res.output.bytes))
+    assert [c.value for c in next(wb.active.iter_rows())] == ["MyDate", "MyDebit", "MyCredit"]
+    csv_head = bm.records_to_csv_bytes(res.records).split(b"\n")[0].decode()
+    assert csv_head.strip() == "date,debit,credit"

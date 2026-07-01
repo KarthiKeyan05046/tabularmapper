@@ -34,6 +34,7 @@ bank-mapper = "cli:main"
 [tool.setuptools]
 py-modules = [
     "bank_mapper",
+    "schema",
     "ai_matcher",
     "llm_fallback",
     "mapping_cache",

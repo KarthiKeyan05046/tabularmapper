@@ -34,7 +34,8 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from bank_mapper import OUTPUT_SCHEMA, process_stream
+import bank_mapper                    # imported as a module so OUTPUT_SCHEMA is read
+from bank_mapper import process_stream  # dynamically (after configure), never a stale copy
 from mapping_cache import MappingCache
 
 
@@ -60,6 +61,9 @@ state = _State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load the output template + synonyms from BANK_MAPPER_CONFIG (file / URL /
+    # s3:// / dict) so the endpoint honors your schema instead of the defaults.
+    bank_mapper.configure(os.getenv("BANK_MAPPER_CONFIG"))
     state.cache = MappingCache(os.getenv("BANK_MAPPER_CACHE", "mapping_cache.json"))
     state.matcher = build_matcher()
     yield
@@ -119,7 +123,7 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
         header_index=res.header_index,
         needs_review=res.needs_review,
         review_reasons=res.review_reasons,
-        schema_columns=[disp for _, disp in OUTPUT_SCHEMA],
+        schema_columns=[disp for _, disp in bank_mapper.OUTPUT_SCHEMA],
         columns=[ColumnMapOut(**{
             "col_index": m.col_index, "raw_header": m.raw_header,
             "field": m.field, "confidence": m.confidence, "method": m.method,
