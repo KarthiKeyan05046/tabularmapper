@@ -1,0 +1,31 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+.pytest_cache/
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Generated outputs
+*.standardized.xlsx
+
+# Runtime mapping cache (regenerated per format)
+mapping_cache.json
+
+# Secrets / environment
+.env
+.env.local
+
+# Real bank statements — never commit (privacy). Kept locally, untracked.
+samples/
+
+# OS
+.DS_Store
+
+# Large model weights (~90MB) — distribute out-of-band, not in git.
+# Comment this out if you DO want to commit the model.
+models/*.onnx

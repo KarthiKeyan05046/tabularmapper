@@ -1,0 +1,1 @@
+uv run --env-file .env python3 cli.py samples/LC SBI Statement 2025-26.xlsx --ai

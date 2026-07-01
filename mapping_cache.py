@@ -1,0 +1,69 @@
+"""
+mapping_cache.py — persistent {header_fingerprint: field_mapping} cache.
+
+A repeat bank format skips detection/mapping entirely -> true 100% on seen
+formats. The fingerprint is a hash of the normalized header cell strings, so
+the same header layout always resolves to the same cached mapping regardless
+of row content.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+from typing import Optional
+
+from bank_mapper import ColumnMap
+
+_DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "mapping_cache.json")
+
+
+def _fingerprint(header: list) -> str:
+    parts = []
+    for c in header:
+        s = "" if c is None else re.sub(r"\s+", " ", str(c).strip().lower())
+        parts.append(s)
+    raw = "|".join(parts)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+class MappingCache:
+    def __init__(self, path: str = _DEFAULT_PATH):
+        self.path = path
+        self._data: dict = {}
+        self.load()
+
+    def load(self) -> None:
+        if os.path.exists(self.path):
+            try:
+                with open(self.path, "r", encoding="utf-8") as fh:
+                    self._data = json.load(fh)
+            except (json.JSONDecodeError, OSError):
+                self._data = {}
+
+    def save(self) -> None:
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump(self._data, fh, indent=2)
+
+    def get(self, header: list) -> Optional[list[ColumnMap]]:
+        entry = self._data.get(_fingerprint(header))
+        if not entry:
+            return None
+        return [
+            ColumnMap(m["col_index"], m["raw_header"], m["field"],
+                      m["confidence"], "cache")
+            for m in entry["columns"]
+        ]
+
+    def put(self, header: list, col_maps: list[ColumnMap]) -> None:
+        self._data[_fingerprint(header)] = {
+            "header_preview": [("" if c is None else str(c)) for c in header],
+            "columns": [
+                {"col_index": m.col_index, "raw_header": m.raw_header,
+                 "field": m.field, "confidence": m.confidence, "method": m.method}
+                for m in col_maps
+            ],
+        }
+        self.save()
