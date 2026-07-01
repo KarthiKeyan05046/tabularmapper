@@ -92,6 +92,15 @@ def _write_output_file(res, out_path: str) -> None:
 
 
 def main(argv=None) -> int:
+    # Auto-load a local .env if python-dotenv is available (optional convenience),
+    # so BANK_MAPPER_CACHE / _CONFIG / _LEARN_STORE / OPENAI_* are picked up
+    # without exporting. No-op if the package isn't installed.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     ap = argparse.ArgumentParser(description="Bank statement -> standard schema mapper")
     ap.add_argument("input", nargs="?", default=None,
                     help="input .xlsx (omit when using --harvest)")
