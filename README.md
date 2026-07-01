@@ -42,18 +42,23 @@ The core install makes **zero network calls**; the AI only fires when you pass
 ## Run
 
 ```bash
-python cli.py <input.xlsx> [output.xlsx]
+python cli.py <input.xlsx> [output.xlsx] [options]
 ```
 
 Prints the detected header row, the full column mapping with confidences and
 method, transaction count, and any review flags. Options:
 
 ```
---ai                      use the LLM table matcher for unknown headers
---model NAME              LLM model (or env OPENAI_MODEL)
---fallback {none,hashing} offline per-column fallback (default none)
---no-cache                disable mapping_cache.json
---threshold N             fuzzy confidence gate (default 80)
+--format {file,json,bytes,base64,records}
+                                      output format (default: file)
+--ai                                  use the LLM table matcher for unknown
+                                      headers (OpenAI-compatible; structure
+                                      only, never transaction data)
+--model NAME                          LLM model (or env OPENAI_MODEL)
+--fallback {none,hashing}             offline per-column fallback
+                                      (default: none -> zero network calls)
+--no-cache                            disable mapping_cache.json
+--threshold N                         fuzzy confidence gate (default 80)
 ```
 
 For `--ai`, set `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`,
@@ -63,23 +68,215 @@ vLLM / Ollama / LM Studio server — anything OpenAI-compatible.
 Examples:
 
 ```bash
+# Original behavior — write .xlsx to disk
 python cli.py "samples/PAYIR_FC_SBI_2025.xlsx"     # deterministic, no network
+
+# JSON output to stdout
+python cli.py statement.xlsx --format json
+
+# Raw .xlsx bytes — pipe to file
+python cli.py statement.xlsx --format bytes > out.xlsx
+
+# Base64 encoded — embed in scripts
+python cli.py statement.xlsx --format base64
+
+# Records as JSON — inspect raw data
+python cli.py statement.xlsx --format records
+
+# With AI and custom threshold
 export OPENAI_API_KEY=sk-...
-python cli.py new_bank.xlsx out.xlsx --ai          # AI maps a new layout, then caches it
-python cli.py new_bank.xlsx --fallback hashing     # offline lexical, no API
+python cli.py new_bank.xlsx out.xlsx --ai --format file
+python cli.py new_bank.xlsx --fallback hashing --format json
 ```
+
+## Output formats
+
+The engine supports **five output formats** via the `output_format` parameter:
+
+| Format | Type | Best for |
+|--------|------|----------|
+| `records` | `list[dict]` | In-memory processing, JSON APIs |
+| `json` | `str` | HTTP JSON responses, logging, queues |
+| `bytes` | `bytes` | `StreamingResponse`, file downloads, S3 upload |
+| `base64` | `str` | Embedding in JSON, email attachments, data URIs |
+| `file` | `str` (path) | CLI, batch jobs, saving to disk |
+
+`process_file` defaults to `file`; `process_stream` defaults to `records`.
 
 Library use:
 
 ```python
-from bank_mapper import process_file
+from bank_mapper import process_file, process_stream
 from mapping_cache import MappingCache
 
-res = process_file("statement.xlsx", out_path="out.xlsx", cache=MappingCache())
-print(res.header_index, res.needs_review, res.review_reasons)
-for m in res.column_maps:
-    print(m.raw_header, "→", m.field, m.confidence, m.method)
+# --- File input, file output (original behavior) ---
+res = process_file("statement.xlsx", out_path="out.xlsx",
+                   output_format="file", cache=MappingCache())
+print(res.output.to_response())   # -> "out.xlsx"
+
+# --- Stream input, JSON output (API endpoint) ---
+with open("statement.xlsx", "rb") as f:
+    res = process_stream(f.read(), output_format="json")
+print(res.output.json)            # -> JSON string
+
+# --- Stream input, bytes output (StreamingResponse) ---
+res = process_stream(uploaded_bytes, output_format="bytes")
+# res.output.bytes  ->  .xlsx bytes for StreamingResponse
+
+# --- Stream input, base64 output (embedded payload) ---
+res = process_stream(uploaded_bytes, output_format="base64")
+payload = {"filename": "mapped.xlsx", "content_b64": res.output.base64}
+
+# --- In-memory records, no serialization cost ---
+res = process_stream(uploaded_bytes, output_format="records")
+for rec in res.output.records:
+    print(rec["date"], rec["debit"], rec["credit"])
 ```
+
+`res.output` is an `OutputResult` with lazy-evaluated properties:
+- `.records` — raw Python list (always available, no cost)
+- `.json` — JSON string (cached on first access)
+- `.bytes` — in-memory `.xlsx` bytes via `BytesIO` (cached)
+- `.base64` — base64-encoded `.xlsx` bytes (cached, derived from `.bytes`)
+- `.to_response()` — returns the native object for the requested format
+
+For CSV output, use the standalone serializer:
+
+```python
+from bank_mapper import records_to_csv_bytes
+csv_bytes = records_to_csv_bytes(res.records)
+```
+
+## Multi-output patterns
+
+A common need: process once, then fan out to multiple destinations — e.g.
+save JSON to a database, upload `.xlsx` bytes to S3, and emit a base64 payload
+to an audit queue. You do **not** need multiple `process_stream` calls.
+
+The extraction pass is the expensive part (parsing, header detection, column
+mapping, date/amount normalization). Serialization is cheap by comparison.
+`output_format="records"` defers all serialization costs until you access them.
+
+### Pattern 1: DB + S3 + audit log (one pass, three destinations)
+
+```python
+from bank_mapper import process_stream, records_to_csv_bytes
+from mapping_cache import MappingCache
+import json
+
+# ONE extraction pass — zero serialization work
+res = process_stream(uploaded_bytes, output_format="records", cache=MappingCache())
+
+records = res.records
+
+# Destination 1: JSON → database
+json_payload = json.dumps(records)
+await db.insert_transactions(json_payload)
+
+# Destination 2: .xlsx bytes → S3 (lazy, built once, cached)
+xlsx_bytes = res.output.bytes
+s3_client.put_object(Bucket="statements", Key="mapped/2024-01.xlsx", Body=xlsx_bytes)
+
+# Destination 3: base64 → audit queue (reuses cached bytes above)
+audit_log.emit({"file_b64": res.output.base64})
+
+# Destination 4: CSV → legacy system (standalone, no caching)
+csv_bytes = records_to_csv_bytes(records)
+ftp.upload("report.csv", csv_bytes)
+```
+
+### Pattern 2: FastAPI — return JSON + async background upload
+
+```python
+from fastapi import UploadFile, BackgroundTasks
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
+import boto3
+
+from bank_mapper import process_stream
+from mapping_cache import MappingCache
+
+CACHE = MappingCache()
+s3 = boto3.client("s3")
+
+async def upload_statement(file: UploadFile, background: BackgroundTasks):
+    data = await file.read()
+
+    # Single pass
+    res = await run_in_threadpool(
+        process_stream, data,
+        output_format="records", cache=CACHE
+    )
+
+    if res.needs_review:
+        return JSONResponse(status_code=422, content={
+            "needs_review": True, "reasons": res.review_reasons
+        })
+
+    # Return JSON immediately
+    response = {"transactions": len(res.records), "records": res.records}
+
+    # Background: upload .xlsx to S3 (doesn't block the response)
+    background.add_task(
+        s3.put_object,
+        Bucket="statements",
+        Key=f"mapped/{file.filename}",
+        Body=res.output.bytes  # built lazily here, cached for reuse
+    )
+
+    return response
+```
+
+### Pattern 3: CLI pipe — bytes to file + JSON to stdout
+
+```bash
+# Extract once, pipe .xlsx to disk, capture JSON for logging
+python cli.py statement.xlsx --format bytes > out.xlsx
+python cli.py statement.xlsx --format json > mapping_log.json
+
+# Or in a single script:
+python -c "
+import json, sys
+from bank_mapper import process_file
+
+res = process_file('statement.xlsx', output_format='records')
+
+# Save .xlsx
+with open('out.xlsx', 'wb') as f:
+    f.write(res.output.bytes)
+
+# Save JSON metadata
+with open('meta.json', 'w') as f:
+    json.dump({
+        'header_index': res.header_index,
+        'transactions': len(res.records),
+        'needs_review': res.needs_review,
+        'column_maps': [
+            {'header': m.raw_header, 'field': m.field, 'conf': m.confidence}
+            for m in res.column_maps
+        ]
+    }, f, indent=2)
+"
+```
+
+### Cost breakdown
+
+| Step | What happens | Cost |
+|------|-------------|------|
+| `process_stream(..., output_format="records")` | Parse xlsx, detect header, map columns, normalize dates/amounts | **One-time, expensive** |
+| `res.records` | Return the already-built list | Free |
+| `res.output.json` | `json.dumps(records)` | Cheap, cached after first call |
+| `res.output.bytes` | `openpyxl` → `BytesIO` | Cheap, cached after first call |
+| `res.output.base64` | `base64.b64encode(bytes)` | Cheap, derived from cached bytes |
+| `records_to_csv_bytes(records)` | `csv.DictWriter` → `BytesIO` | Cheap, no caching |
+
+### Rule of thumb
+
+| Scenario | Use |
+|----------|-----|
+| One destination, format known upfront | `output_format="json"` or `"bytes"` or `"file"` (eager, clean) |
+| Multiple destinations, same data | `output_format="records"` (lazy, fan-out) |
+| Need both raw data + serialized file | `output_format="records"` → access `.records` + `.bytes` |
 
 ## Output schema
 
@@ -213,23 +410,110 @@ and run the blocking call in a threadpool:
 ```python
 from fastapi import UploadFile
 from fastapi.concurrency import run_in_threadpool
-from bank_mapper import process_stream
+from fastapi.responses import StreamingResponse, JSONResponse
+import io
+
+from bank_mapper import process_stream, records_to_csv_bytes
 from mapping_cache import MappingCache
 from ai_matcher import OpenAICompatibleMatcher
 
 CACHE = MappingCache()
 MATCHER = OpenAICompatibleMatcher()          # reads OPENAI_* env; None-safe if no key
 
-async def handle(file: UploadFile):
-    data = await file.read()                 # bytes, parsed in-memory
-    res = await run_in_threadpool(process_stream, data,
-                                  table_matcher=MATCHER, cache=CACHE)
-    return {"needs_review": res.needs_review, "transactions": res.records}
+async def handle_json(file: UploadFile):
+    """Return mapped records as JSON."""
+    data = await file.read()
+    res = await run_in_threadpool(
+        process_stream, data,
+        output_format="json",
+        table_matcher=MATCHER, cache=CACHE
+    )
+    if res.needs_review:
+        return JSONResponse(
+            status_code=422,
+            content={"needs_review": True, "reasons": res.review_reasons}
+        )
+    return JSONResponse(content=json.loads(res.output.json))
+
+async def handle_xlsx(file: UploadFile):
+    """Return mapped records as a downloadable .xlsx file."""
+    data = await file.read()
+    res = await run_in_threadpool(
+        process_stream, data,
+        output_format="bytes",
+        table_matcher=MATCHER, cache=CACHE
+    )
+    if res.needs_review:
+        return JSONResponse(
+            status_code=422,
+            content={"needs_review": True, "reasons": res.review_reasons}
+        )
+    return StreamingResponse(
+        io.BytesIO(res.output.bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=mapped.xlsx"}
+    )
+
+async def handle_base64(file: UploadFile):
+    """Return mapped records as base64-encoded .xlsx (for embedding)."""
+    data = await file.read()
+    res = await run_in_threadpool(
+        process_stream, data,
+        output_format="base64",
+        table_matcher=MATCHER, cache=CACHE
+    )
+    return JSONResponse(content={
+        "needs_review": res.needs_review,
+        "filename": "mapped.xlsx",
+        "content_b64": res.output.base64
+    })
 ```
 
 `process_stream` accepts raw `bytes` or any binary file-like (e.g. `file.file`).
 Use `process_file(path, ...)` when you already have an .xlsx on disk. The shipped
 router (Option A) uses `process_stream`, so uploads never touch the filesystem.
+
+### Full flow: store the file to S3 + insert rows into your DB
+
+The mapper deliberately stays out of AWS and your database — it just returns
+`res.records` (a list of plain dicts, ready to insert). Your endpoint owns S3 and
+the DB, and both use the *same* upload bytes, so the file is read only once:
+
+```python
+import boto3, uuid
+from fastapi import UploadFile
+from fastapi.concurrency import run_in_threadpool
+from bank_mapper import process_stream
+from mapping_cache import MappingCache
+from ai_matcher import OpenAICompatibleMatcher
+
+s3 = boto3.client("s3")
+CACHE = MappingCache()
+MATCHER = OpenAICompatibleMatcher()          # None-safe if OPENAI_API_KEY unset
+
+async def ingest(file: UploadFile):
+    data = await file.read()                 # read ONCE, in memory
+
+    # 1) store the original file to S3 (your bucket, your key scheme)
+    key = f"statements/{uuid.uuid4()}/{file.filename}"
+    await run_in_threadpool(s3.put_object, Bucket="my-bucket", Key=key, Body=data)
+
+    # 2) parse to JSON rows (no temp file)
+    res = await run_in_threadpool(process_stream, data,
+                                  table_matcher=MATCHER, cache=CACHE)
+
+    # 3) insert rows into your DB — res.records is already JSON-shaped
+    rows = [{**r, "s3_key": key} for r in res.records]   # tag each row with the file
+    await your_db.insert_many("transactions", rows)
+
+    return {"s3_key": key, "count": len(rows), "needs_review": res.needs_review}
+```
+
+Each record is `{date, description, reference, debit, credit, balance}` — ISO date
+strings, floats or `null`. Tag rows with the `s3_key` (as above) so every
+transaction links back to its source file in S3. If a statement comes back
+`needs_review=True`, quarantine it (store the file, hold the rows) instead of
+inserting blindly.
 
 Notes for production:
 - Omit `table_matcher` for a strict, model-free service — unknown headers then
@@ -296,11 +580,12 @@ caching, graceful API-error handling, and the no-real-data-leaks guarantee.
 ```
 bank_mapper.py     engine: detect_header_row, map_columns, normalizers,
                    extract_records, process_file, merge_ai_mapping, SYNONYMS
+                   OutputResult (records/json/bytes/base64/file), CSV serializer
 ai_matcher.py      OpenAICompatibleMatcher + profile_columns (AI table matcher)
 llm_fallback.py    HashingEmbeddingFallback / make_llm_fallback (offline fallback)
 bank_mapper_api.py FastAPI router (POST /statements/map) + standalone app
 mapping_cache.py   MappingCache (header fingerprint → mapping)
-cli.py             command-line runner
+cli.py             command-line runner with --format flag
 make_fixtures.py   regenerates test_statements/
 samples/           real bank statements for manual runs
 test_statements/   synthetic pytest fixtures

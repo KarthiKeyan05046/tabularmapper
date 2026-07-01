@@ -17,10 +17,14 @@ Design invariants (see BUILD_PROMPT.md):
 
 from __future__ import annotations
 
+import base64
+import csv
 import datetime as _dt
+import io
+import json
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Literal, Optional, Union
 
 from dateutil import parser as _dateparser
 from rapidfuzz import fuzz
@@ -98,6 +102,12 @@ SYNONYMS: dict[str, list[str]] = {
 
 
 # --------------------------------------------------------------------------
+# Output format types
+# --------------------------------------------------------------------------
+OutputFormat = Literal["records", "json", "bytes", "base64", "file"]
+
+
+# --------------------------------------------------------------------------
 # Data classes
 # --------------------------------------------------------------------------
 @dataclass
@@ -118,6 +128,56 @@ class ColumnMap:
 
 
 @dataclass
+class OutputResult:
+    """Lazy-evaluated output container supporting multiple serialization formats."""
+    records: list[dict]
+    format: OutputFormat
+    file_path: Optional[str] = None
+    _json: Optional[str] = field(default=None, repr=False)
+    _bytes: Optional[bytes] = field(default=None, repr=False)
+    _base64: Optional[str] = field(default=None, repr=False)
+
+    @property
+    def json(self) -> str:
+        """Records as JSON string."""
+        if self._json is None:
+            self._json = json.dumps(self.records, ensure_ascii=False)
+        return self._json
+
+    @property
+    def bytes(self) -> bytes:
+        """Records as .xlsx bytes (lazy, cached)."""
+        if self._bytes is None:
+            self._bytes = _records_to_xlsx_bytes(self.records)
+        return self._bytes
+
+    @property
+    def base64(self) -> str:
+        """Base64-encoded .xlsx bytes (lazy, cached)."""
+        if self._base64 is None:
+            self._base64 = base64.b64encode(self.bytes).decode("ascii")
+        return self._base64
+
+    def to_response(self) -> Union[list[dict], str, bytes]:
+        """Return the native Python object for the requested format."""
+        if self.format == "json":
+            return self.json
+        if self.format == "bytes":
+            return self.bytes
+        if self.format == "base64":
+            return self.base64
+        if self.format == "file":
+            if self.file_path is None:
+                raise ValueError("file_path required for 'file' output format")
+            _write_output(self.file_path, self.records)
+            return self.file_path
+        return self.records
+
+    def __repr__(self) -> str:
+        return f"<OutputResult format={self.format} records={len(self.records)}>"
+
+
+@dataclass
 class ProcessResult:
     input_path: str
     output_path: Optional[str]
@@ -128,6 +188,7 @@ class ProcessResult:
     needs_review: bool
     review_reasons: list[str]
     header_breakdown: dict = field(default_factory=dict)
+    output: Optional[OutputResult] = field(default=None, repr=False)
 
 
 # --------------------------------------------------------------------------
@@ -562,20 +623,38 @@ def evaluate_review(col_maps: list[ColumnMap], records: list[dict],
 
 
 # --------------------------------------------------------------------------
-# process_file — glue
+# Output serializers
 # --------------------------------------------------------------------------
-def _read_sheet(path: str) -> list[list]:
-    # `src` may be a filesystem path OR a binary file-like object (BytesIO) —
-    # openpyxl accepts both, so uploads can be read straight from memory.
+def _records_to_xlsx_bytes(records: list[dict]) -> bytes:
+    """Serialize records to .xlsx bytes in-memory (no temp file)."""
     import openpyxl
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    wb = openpyxl.Workbook()
     ws = wb.active
-    rows = [list(r) for r in ws.iter_rows(values_only=True)]
-    wb.close()
-    return rows
+    ws.title = "Standardized"
+    headers = [disp for _, disp in OUTPUT_SCHEMA]
+    ws.append(headers)
+    for rec in records:
+        ws.append([rec.get(fld) for fld, _ in OUTPUT_SCHEMA])
+    bio = io.BytesIO()
+    wb.save(bio)
+    return bio.getvalue()
+
+
+def records_to_csv_bytes(records: list[dict], encoding: str = "utf-8") -> bytes:
+    """Serialize records to CSV bytes."""
+    bio = io.BytesIO()
+    text = io.TextIOWrapper(bio, encoding=encoding, newline="")
+    headers = [disp for _, disp in OUTPUT_SCHEMA]
+    writer = csv.DictWriter(text, fieldnames=[f for f, _ in OUTPUT_SCHEMA])
+    writer.writeheader()
+    for rec in records:
+        writer.writerow(rec)
+    text.flush()
+    return bio.getvalue()
 
 
 def _write_output(path: str, records: list[dict]) -> None:
+    """Write records to an .xlsx file on disk."""
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -587,6 +666,9 @@ def _write_output(path: str, records: list[dict]) -> None:
     wb.save(path)
 
 
+# --------------------------------------------------------------------------
+# AI integration
+# --------------------------------------------------------------------------
 AI_CONFIDENCE = 85  # below exact(100), at/above the fuzzy gate so it stands on its own
 
 
@@ -639,9 +721,13 @@ def merge_ai_mapping(col_maps: list[ColumnMap], ai: dict) -> list[ColumnMap]:
     return col_maps
 
 
+# --------------------------------------------------------------------------
+# Core runner
+# --------------------------------------------------------------------------
 def _run(rows: list[list], source_label: str, out_path, llm_fallback,
-         table_matcher, scan_limit, threshold, cache) -> ProcessResult:
-    """Shared core: detect header -> map -> (AI) -> extract -> review -> (write).
+         table_matcher, scan_limit, threshold, cache,
+         output_format: OutputFormat) -> ProcessResult:
+    """Shared core: detect header -> map -> (AI) -> extract -> review -> output.
     Works on already-read `rows` so it is source-agnostic (path or stream)."""
     if not rows:
         return ProcessResult(source_label, None, 0, 0.0, [], [], True,
@@ -678,27 +764,46 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
     if cache is not None and not from_cache and not needs_review:
         cache.put(header, col_maps)
 
-    if out_path:
+    # Build output result
+    output = OutputResult(
+        records=records,
+        format=output_format,
+        file_path=out_path,
+    )
+
+    # For backward compat: still write file if out_path given and format is "file"
+    if out_path and output_format == "file":
         _write_output(out_path, records)
 
     return ProcessResult(
         input_path=source_label, output_path=out_path, header_index=hc.index,
         header_score=hc.score, column_maps=col_maps, records=records,
         needs_review=needs_review, review_reasons=reasons,
-        header_breakdown=hc.breakdown,
+        header_breakdown=hc.breakdown, output=output,
     )
 
 
+# --------------------------------------------------------------------------
+# Public API
+# --------------------------------------------------------------------------
 def process_file(
     path: str,
     out_path: Optional[str] = None,
+    output_format: OutputFormat = "file",
     llm_fallback: Optional[Callable] = None,
     table_matcher: Optional[Callable] = None,
     scan_limit: int = 25,
     threshold: int = 80,
     cache: Optional["MappingCache"] = None,
 ) -> ProcessResult:
-    """Read an .xlsx from a filesystem `path` and map it. See `_run` / README.
+    """Read an .xlsx from a filesystem `path` and map it.
+
+    `output_format` controls the serialization of `result.output`:
+      - "file"    : writes to `out_path` on disk, returns path string
+      - "records" : raw Python list[dict] (default for streams)
+      - "json"    : JSON string
+      - "bytes"   : in-memory .xlsx bytes
+      - "base64"  : base64-encoded .xlsx bytes
 
     `table_matcher(header_row, data_rows, allowed_fields) -> {col_index: field}`
     is the LLM path (see ai_matcher.OpenAICompatibleMatcher). It fires only when
@@ -706,12 +811,13 @@ def process_file(
     """
     rows = _read_sheet(path)
     return _run(rows, path, out_path, llm_fallback, table_matcher,
-                scan_limit, threshold, cache)
+                scan_limit, threshold, cache, output_format)
 
 
 def process_stream(
     data,
     out_path: Optional[str] = None,
+    output_format: OutputFormat = "records",
     llm_fallback: Optional[Callable] = None,
     table_matcher: Optional[Callable] = None,
     scan_limit: int = 25,
@@ -725,6 +831,9 @@ def process_stream(
 
     For bank data this is the preferred entry point: the statement is parsed
     entirely in memory and never lands on the filesystem.
+
+    Default `output_format` is "records" since streams are typically consumed
+    by an API that serializes its own response.
     """
     import io
     if isinstance(data, (bytes, bytearray)):
@@ -733,4 +842,18 @@ def process_stream(
         fileobj = data  # already a binary file-like object
     rows = _read_sheet(fileobj)
     return _run(rows, source_label, out_path, llm_fallback, table_matcher,
-                scan_limit, threshold, cache)
+                scan_limit, threshold, cache, output_format)
+
+
+# --------------------------------------------------------------------------
+# Internal sheet reader
+# --------------------------------------------------------------------------
+def _read_sheet(path: str) -> list[list]:
+    # `src` may be a filesystem path OR a binary file-like object (BytesIO) —
+    # openpyxl accepts both, so uploads can be read straight from memory.
+    import openpyxl
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.active
+    rows = [list(r) for r in ws.iter_rows(values_only=True)]
+    wb.close()
+    return rows

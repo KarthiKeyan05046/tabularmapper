@@ -10,8 +10,9 @@ wheels/
 # Virtual environments
 .venv
 
-# Generated outputs
+# Generated outputs (never commit — may contain transaction rows)
 *.standardized.xlsx
+/out*.xlsx
 
 # Runtime mapping cache (regenerated per format)
 mapping_cache.json
@@ -19,6 +20,7 @@ mapping_cache.json
 # Secrets / environment
 .env
 .env.local
+run-command.txt
 
 # Real bank statements — never commit (privacy). Kept locally, untracked.
 samples/
