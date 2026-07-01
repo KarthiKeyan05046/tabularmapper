@@ -169,51 +169,77 @@ instead of guessing. Nothing crashes on an API error.
 > statement from each new bank (it's cached after), or set a stricter policy in
 > `evaluate_review`. The cache means that check happens at most once per bank.
 
-## FastAPI integration
+## Use it from your FastAPI backend
 
-The mapper is a plain library — import `process_file`. Build the matcher and
-cache **once** at startup and reuse them across requests:
+### Install it as a dependency
+
+The project is a proper installable package. From your backend's environment:
+
+```bash
+# from a local checkout
+uv add /path/to/bank-statement-mapper[api]
+# or from the (private) git repo — needs a token / SSH access
+uv add "bank-statement-mapper[api] @ git+https://github.com/KarthiKeyan05046/bank-statement-mapper.git"
+# plain pip works too
+pip install "/path/to/bank-statement-mapper[api]"
+```
+
+The `[api]` extra pulls `fastapi` + `python-multipart`. Omit it if you only want
+the library (`process_file`) and not the router.
+
+### Option A — mount the ready-made router (fastest)
+
+`bank_mapper_api.py` ships an `APIRouter` plus a `lifespan` that builds the cache
+and AI matcher once at startup:
 
 ```python
-# app.py
-import tempfile, os
-from fastapi import FastAPI, UploadFile, File
-from bank_mapper import process_file, OUTPUT_SCHEMA
+from fastapi import FastAPI
+from bank_mapper_api import router, lifespan
+
+app = FastAPI(lifespan=lifespan)     # or merge into your existing lifespan
+app.include_router(router)
+# -> POST /statements/map   (upload .xlsx)   GET /statements/health
+```
+
+Run standalone to try it: `uvicorn bank_mapper_api:app --reload`.
+
+### Option B — call the library yourself
+
+If you want full control of the endpoint, use `process_stream` — it reads the
+upload's **raw bytes in memory, with no temp file** (nothing hits disk, which
+matters for bank data). Build `MappingCache` + `OpenAICompatibleMatcher` **once**
+and run the blocking call in a threadpool:
+
+```python
+from fastapi import UploadFile
+from fastapi.concurrency import run_in_threadpool
+from bank_mapper import process_stream
 from mapping_cache import MappingCache
 from ai_matcher import OpenAICompatibleMatcher
 
-app = FastAPI()
-CACHE = MappingCache()                       # persistent header cache
-MATCHER = OpenAICompatibleMatcher()          # reads OPENAI_* env, built once
+CACHE = MappingCache()
+MATCHER = OpenAICompatibleMatcher()          # reads OPENAI_* env; None-safe if no key
 
-@app.post("/map-statement")
-async def map_statement(file: UploadFile = File(...)):
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-        tmp.write(await file.read())
-        path = tmp.name
-    try:
-        res = process_file(path, table_matcher=MATCHER, cache=CACHE)
-    finally:
-        os.unlink(path)
-    return {
-        "header_index": res.header_index,
-        "needs_review": res.needs_review,
-        "review_reasons": res.review_reasons,
-        "columns": [
-            {"raw": m.raw_header, "field": m.field,
-             "confidence": m.confidence, "method": m.method}
-            for m in res.column_maps
-        ],
-        "transactions": res.records,          # already YYYY-MM-DD + split debit/credit
-        "schema": [disp for _, disp in OUTPUT_SCHEMA],
-    }
+async def handle(file: UploadFile):
+    data = await file.read()                 # bytes, parsed in-memory
+    res = await run_in_threadpool(process_stream, data,
+                                  table_matcher=MATCHER, cache=CACHE)
+    return {"needs_review": res.needs_review, "transactions": res.records}
 ```
+
+`process_stream` accepts raw `bytes` or any binary file-like (e.g. `file.file`).
+Use `process_file(path, ...)` when you already have an .xlsx on disk. The shipped
+router (Option A) uses `process_stream`, so uploads never touch the filesystem.
 
 Notes for production:
 - Omit `table_matcher` for a strict, model-free service — unknown headers then
   just set `needs_review=True`.
-- The `MappingCache` means a bank format seen once maps instantly thereafter,
-  with no AI call.
+- `process_file` is synchronous (openpyxl + a possible blocking LLM call). Always
+  run it in a threadpool (Option A does this for you) so it doesn't stall the
+  event loop; for large files or high volume, move it to a background job.
+- The `MappingCache` is a **JSON file**. With multiple workers/containers that's
+  a write race — point `BANK_MAPPER_CACHE` at a shared path, or swap the cache
+  for Redis/DB (same tiny get/put interface in `mapping_cache.py`).
 - `res.records` is JSON-ready; write to xlsx with `process_file(..., out_path=...)`
   only if you need a file artifact.
 
@@ -272,6 +298,7 @@ bank_mapper.py     engine: detect_header_row, map_columns, normalizers,
                    extract_records, process_file, merge_ai_mapping, SYNONYMS
 ai_matcher.py      OpenAICompatibleMatcher + profile_columns (AI table matcher)
 llm_fallback.py    HashingEmbeddingFallback / make_llm_fallback (offline fallback)
+bank_mapper_api.py FastAPI router (POST /statements/map) + standalone app
 mapping_cache.py   MappingCache (header fingerprint → mapping)
 cli.py             command-line runner
 make_fixtures.py   regenerates test_statements/

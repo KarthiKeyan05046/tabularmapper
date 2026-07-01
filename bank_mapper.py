@@ -565,6 +565,8 @@ def evaluate_review(col_maps: list[ColumnMap], records: list[dict],
 # process_file — glue
 # --------------------------------------------------------------------------
 def _read_sheet(path: str) -> list[list]:
+    # `src` may be a filesystem path OR a binary file-like object (BytesIO) —
+    # openpyxl accepts both, so uploads can be read straight from memory.
     import openpyxl
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb.active
@@ -637,28 +639,12 @@ def merge_ai_mapping(col_maps: list[ColumnMap], ai: dict) -> list[ColumnMap]:
     return col_maps
 
 
-def process_file(
-    path: str,
-    out_path: Optional[str] = None,
-    llm_fallback: Optional[Callable] = None,
-    table_matcher: Optional[Callable] = None,
-    scan_limit: int = 25,
-    threshold: int = 80,
-    cache: Optional["MappingCache"] = None,
-) -> ProcessResult:
-    """Read -> detect header -> map -> (AI for unknown headers) -> extract ->
-    review -> (write). Never crashes on unknown formats; surfaces problems via
-    needs_review instead.
-
-    `table_matcher(header_row, data_rows, allowed_fields) -> {col_index: field}`
-    is the LLM path (see ai_matcher.OpenAICompatibleMatcher). It fires only when
-    the deterministic pass leaves a critical gap AND the header isn't cached.
-    Its result is merged in and, if the mapping ends up complete, cached — so a
-    new bank costs one AI call, then never again.
-    """
-    rows = _read_sheet(path)
+def _run(rows: list[list], source_label: str, out_path, llm_fallback,
+         table_matcher, scan_limit, threshold, cache) -> ProcessResult:
+    """Shared core: detect header -> map -> (AI) -> extract -> review -> (write).
+    Works on already-read `rows` so it is source-agnostic (path or stream)."""
     if not rows:
-        return ProcessResult(path, None, 0, 0.0, [], [], True,
+        return ProcessResult(source_label, None, 0, 0.0, [], [], True,
                              ["empty sheet"], {})
 
     hc = detect_header_row(rows, scan_limit=scan_limit)
@@ -696,8 +682,55 @@ def process_file(
         _write_output(out_path, records)
 
     return ProcessResult(
-        input_path=path, output_path=out_path, header_index=hc.index,
+        input_path=source_label, output_path=out_path, header_index=hc.index,
         header_score=hc.score, column_maps=col_maps, records=records,
         needs_review=needs_review, review_reasons=reasons,
         header_breakdown=hc.breakdown,
     )
+
+
+def process_file(
+    path: str,
+    out_path: Optional[str] = None,
+    llm_fallback: Optional[Callable] = None,
+    table_matcher: Optional[Callable] = None,
+    scan_limit: int = 25,
+    threshold: int = 80,
+    cache: Optional["MappingCache"] = None,
+) -> ProcessResult:
+    """Read an .xlsx from a filesystem `path` and map it. See `_run` / README.
+
+    `table_matcher(header_row, data_rows, allowed_fields) -> {col_index: field}`
+    is the LLM path (see ai_matcher.OpenAICompatibleMatcher). It fires only when
+    the deterministic pass leaves a critical gap AND the header isn't cached.
+    """
+    rows = _read_sheet(path)
+    return _run(rows, path, out_path, llm_fallback, table_matcher,
+                scan_limit, threshold, cache)
+
+
+def process_stream(
+    data,
+    out_path: Optional[str] = None,
+    llm_fallback: Optional[Callable] = None,
+    table_matcher: Optional[Callable] = None,
+    scan_limit: int = 25,
+    threshold: int = 80,
+    cache: Optional["MappingCache"] = None,
+    source_label: str = "<stream>",
+) -> ProcessResult:
+    """Map an .xlsx received as raw bytes or a binary file-like object — no temp
+    file, nothing written to disk. Ideal for a FastAPI UploadFile: pass
+    `await file.read()` (bytes) or `file.file` (a stream) straight in.
+
+    For bank data this is the preferred entry point: the statement is parsed
+    entirely in memory and never lands on the filesystem.
+    """
+    import io
+    if isinstance(data, (bytes, bytearray)):
+        fileobj = io.BytesIO(data)
+    else:
+        fileobj = data  # already a binary file-like object
+    rows = _read_sheet(fileobj)
+    return _run(rows, source_label, out_path, llm_fallback, table_matcher,
+                scan_limit, threshold, cache)

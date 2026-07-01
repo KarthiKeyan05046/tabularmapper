@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "bank-statement-mapper"
 version = "0.1.0"
-description = "Map any bank statement .xlsx to a standard schema (deterministic + optional local embedding fallback)"
+description = "Map any bank statement .xlsx to a standard schema (deterministic + optional AI column matcher)"
 readme = "README.md"
 requires-python = ">=3.9"
 # Core engine deps — required. The default build makes ZERO network calls.
@@ -15,8 +19,27 @@ dependencies = [
 # (urllib) to call any OpenAI-compatible endpoint — no SDK dependency needed.
 # Set OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL to enable it.
 
+[project.optional-dependencies]
+# Install with `.[api]` to expose the FastAPI router (bank_mapper_api.py).
+api = [
+    "fastapi>=0.110",
+    "python-multipart>=0.0.9",
+]
+
 [project.scripts]
 bank-mapper = "cli:main"
+
+# Flat top-level modules (no src/ package). This is what makes the project
+# pip/uv-installable so a FastAPI backend can depend on it directly.
+[tool.setuptools]
+py-modules = [
+    "bank_mapper",
+    "ai_matcher",
+    "llm_fallback",
+    "mapping_cache",
+    "bank_mapper_api",
+    "cli",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
