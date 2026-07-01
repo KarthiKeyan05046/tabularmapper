@@ -14,8 +14,11 @@ wheels/
 *.standardized.xlsx
 /out*.xlsx
 
-# Runtime mapping cache (regenerated per format)
+# Runtime mapping cache (regenerated per format) — JSON or SQLite backends
 mapping_cache.json
+mapping_cache.db
+*.db-wal
+*.db-shm
 
 # Secrets / environment
 .env

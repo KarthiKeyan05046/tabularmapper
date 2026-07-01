@@ -545,9 +545,9 @@ Notes for production:
 - `process_file` is synchronous (openpyxl + a possible blocking LLM call). Always
   run it in a threadpool (Option A does this for you) so it doesn't stall the
   event loop; for large files or high volume, move it to a background job.
-- The `MappingCache` is a **JSON file**. With multiple workers/containers that's
-  a write race — point `BANK_MAPPER_CACHE` at a shared path, or swap the cache
-  for Redis/DB (same tiny get/put interface in `mapping_cache.py`).
+- The `MappingCache` backend is URL-selected and defaults to **SQLite**
+  (concurrency-safe). For multiple containers on separate hosts, point
+  `BANK_MAPPER_CACHE` at `redis://…` or `postgresql://…` so they share one cache.
 - `res.records` is JSON-ready; write to xlsx with `process_file(..., out_path=...)`
   only if you need a file artifact.
 
@@ -568,12 +568,34 @@ API is unreachable. A reviewer confirms/corrects the mapping, then either adds t
 header phrases to `SYNONYMS` or trusts the cache — after which that format maps
 with no review or AI call.
 
-## Mapping cache
+## Mapping cache (pluggable storage)
 
-`mapping_cache.json` stores `{header_fingerprint → column mapping}`. A repeat
-bank layout skips detection/mapping entirely (true 100% on seen formats). The
-fingerprint is a hash of the normalized header strings, so it's independent of
-row content. Pass `cache=MappingCache()` (the CLI does this unless `--no-cache`).
+The cache stores `{header_fingerprint → column mapping}` so a repeat bank layout
+skips detection/mapping entirely (true 100% on seen formats). The fingerprint is
+a hash of the normalized header strings, independent of row content. Pass
+`cache=MappingCache()` (the CLI does this unless `--no-cache`).
+
+The **backend is chosen by a URL** (`stores.open_store`), the same way you'd
+point SQLAlchemy or Celery at a database — swap it with an env var, no code:
+
+```
+BANK_MAPPER_CACHE=memory://                  # tests / single worker
+BANK_MAPPER_CACHE=sqlite:///mapping_cache.db # DEFAULT — file, no server, concurrency-safe
+BANK_MAPPER_CACHE=redis://localhost:6379/0   # multi-worker      (pip install ...[redis])
+BANK_MAPPER_CACHE=postgresql://user@host/db  # shared, durable   (pip install ...[postgres])
+```
+
+```python
+MappingCache()                               # env BANK_MAPPER_CACHE, else sqlite
+MappingCache("redis://localhost:6379/0")     # explicit
+MappingCache(path="legacy.json")             # legacy JSON file (back-compat)
+```
+
+The default is **SQLite**, not a JSON file: still a single file with no server to
+run, but with real transactions and locking, so it's safe under multiple workers
+(the old JSON cache raced). Any object with `get()`/`put()` also works — inject
+your own store for a backend not shipped here. The learned-synonyms store (next)
+uses this exact same convention.
 
 ## Tests
 

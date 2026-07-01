@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     # Load the output template + synonyms from BANK_MAPPER_CONFIG (file / URL /
     # s3:// / dict) so the endpoint honors your schema instead of the defaults.
     bank_mapper.configure(os.getenv("BANK_MAPPER_CONFIG"))
-    state.cache = MappingCache(os.getenv("BANK_MAPPER_CACHE", "mapping_cache.json"))
+    state.cache = MappingCache()   # reads BANK_MAPPER_CACHE (URL) or the sqlite default
     state.matcher = build_matcher()
     yield
     # nothing to tear down

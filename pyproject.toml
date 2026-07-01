@@ -13,6 +13,7 @@ dependencies = [
     "openpyxl>=3.1",
     "rapidfuzz>=3.0",
     "python-dateutil>=2.8",
+    "redis>=7.0.1",
 ]
 
 # The AI table matcher (ai_matcher.py) uses only the Python standard library
@@ -25,6 +26,9 @@ api = [
     "fastapi>=0.110",
     "python-multipart>=0.0.9",
 ]
+# Storage backends for the mapping cache / learned store (URL-selected).
+redis = ["redis>=5.0"]
+postgres = ["psycopg[binary]>=3.1"]
 
 [project.scripts]
 bank-mapper = "cli:main"
@@ -35,6 +39,7 @@ bank-mapper = "cli:main"
 py-modules = [
     "bank_mapper",
     "schema",
+    "stores",
     "ai_matcher",
     "llm_fallback",
     "mapping_cache",

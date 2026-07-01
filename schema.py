@@ -206,7 +206,13 @@ def _read_source(source: str, timeout: float = 10.0) -> bytes:
 
 def _read_s3(uri: str) -> bytes:
     from urllib.parse import urlparse
-    import boto3  # optional dep; only needed for s3:// sources
+    try:
+        import boto3  # optional; only for s3:// sources — or use a presigned https URL
+    except ImportError as exc:
+        raise ImportError(
+            "Loading config from s3:// needs the 'boto3' package (pip install "
+            "boto3), or pass a presigned https:// URL instead (no dependency)."
+        ) from exc
     parts = urlparse(uri)
     obj = boto3.client("s3").get_object(Bucket=parts.netloc,
                                         Key=parts.path.lstrip("/"))

@@ -15,7 +15,10 @@ Options:
                                           (default: none -> zero network calls)
     --config PATH                         output template + synonyms JSON
                                           (file / URL / s3://; or env BANK_MAPPER_CONFIG)
-    --no-cache                            disable mapping_cache.json
+    --cache URL                           cache backend: sqlite:/// | redis:// |
+                                          postgresql:// | memory:// (or env
+                                          BANK_MAPPER_CACHE; use env for secrets)
+    --no-cache                            disable the mapping cache
     --threshold N                         fuzzy confidence gate (default 80)
 
 Env for --ai: OPENAI_API_KEY, OPENAI_BASE_URL (default OpenAI), OPENAI_MODEL.
@@ -89,6 +92,10 @@ def main(argv=None) -> int:
     ap.add_argument("--fallback", choices=["none", "hashing"], default="none")
     ap.add_argument("--config", default=None,
                     help="config JSON (file / URL / s3://); or env BANK_MAPPER_CONFIG")
+    ap.add_argument("--cache", default=None,
+                    help="cache backend URL: sqlite:///f.db | redis://… | "
+                         "postgresql://… | memory:// (or env BANK_MAPPER_CACHE). "
+                         "Prefer the env var for URLs containing secrets.")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--threshold", type=int, default=80)
     args = ap.parse_args(argv)
@@ -108,7 +115,9 @@ def main(argv=None) -> int:
         out = base + ".standardized.xlsx"
 
     fallback = _build_fallback(args.fallback)
-    cache = None if args.no_cache else MappingCache()
+    # args.cache is None unless --cache is passed; MappingCache(None) then falls
+    # back to BANK_MAPPER_CACHE or the sqlite default. Never hardcode a secret URL.
+    cache = None if args.no_cache else MappingCache(args.cache)
 
     table_matcher = None
     if args.ai:
