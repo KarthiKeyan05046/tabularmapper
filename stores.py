@@ -10,6 +10,7 @@ like SQLAlchemy / Celery — swap it with an env var, no code change:
                                       SQLite file — no server, concurrency-safe (DEFAULT)
     ./mapping_cache.json / file://... legacy JSON file (NOT multi-worker safe)
     redis://host:6379/0               Redis            (pip install ...[redis])
+    valkey://host:6379/0              Valkey           (pip install ...[valkey])
     postgresql://user@host/db         Postgres         (pip install ...[postgres])
 
 Escape hatch: any object with get()/put() works — pass your own to open_store's
@@ -115,31 +116,66 @@ class SqliteStore:
 
 
 # --------------------------------------------------------------------------
-# Redis (optional dep, lazy import)
+# Redis / Valkey (optional deps, lazy import).
+# Valkey is the open-source Redis fork; the two speak the same wire protocol,
+# so a single client resolver + get/put serves both. Per the Aiven docs, the
+# Valkey client is built with the module-level `valkey.from_url(uri)`.
 # --------------------------------------------------------------------------
-class RedisStore:
-    def __init__(self, url: str, prefix: str = "bankmap:") -> None:
+def _redis_proto_client(url: str, prefer: str = "redis"):
+    """Build a client for any redis-protocol server (Redis or Valkey).
+
+    Both drivers are wire-compatible and either can serve either scheme, so we
+    try the preferred driver first, then the other, normalizing the URL scheme
+    for whichever library is used. Managed Valkey (e.g. Aiven) hands out a TLS
+    URI — pass it straight through as valkey:// / valkeys:// / rediss://.
+    """
+    order = ["valkey", "redis"] if prefer == "valkey" else ["redis", "valkey"]
+    last_err = None
+    for lib in order:
         try:
-            import redis
-        except ImportError as exc:  # friendly, actionable message
-            raise ImportError(
-                "The redis cache backend needs the 'redis' package. Install it "
-                "with:  pip install bank-statement-mapper[redis]   (or `pip "
-                "install redis`). It is optional — the default SQLite backend "
-                "needs nothing extra."
-            ) from exc
-        self._r = redis.Redis.from_url(url)
+            mod = __import__(lib)              # valkey-py or redis-py
+        except ImportError as exc:
+            last_err = exc
+            continue
+        u = url
+        if lib == "redis":                     # redis-py doesn't know valkey://
+            u = u.replace("valkeys://", "rediss://", 1).replace("valkey://", "redis://", 1)
+        else:                                  # valkey-py: normalize redis:// -> valkey://
+            u = u.replace("rediss://", "valkeys://", 1).replace("redis://", "valkey://", 1)
+        return mod.from_url(u)                  # module-level from_url (both expose it)
+    raise ImportError(
+        "This cache backend needs the 'valkey' or 'redis' package. Install one "
+        "with:  pip install bank-statement-mapper[valkey]   (or [redis]). Both "
+        "are optional — the default SQLite backend needs nothing extra."
+    ) from last_err
+
+
+class _RedisProtocolStore:
+    def __init__(self, client, prefix: str = "bankmap:") -> None:
+        self._r = client
         self._prefix = prefix
 
     def get(self, key: str) -> Optional[dict]:
         raw = self._r.get(self._prefix + key)
-        return json.loads(raw) if raw else None
+        return json.loads(raw) if raw else None   # json.loads accepts bytes
 
     def put(self, key: str, value: dict) -> None:
         self._r.set(self._prefix + key, json.dumps(value))
 
     def close(self) -> None:
         pass
+
+
+class RedisStore(_RedisProtocolStore):
+    def __init__(self, url: str, prefix: str = "bankmap:") -> None:
+        super().__init__(_redis_proto_client(url, prefer="redis"), prefix)
+
+
+class ValkeyStore(_RedisProtocolStore):
+    """Valkey (the open-source Redis fork). Uses valkey-py (`valkey.from_url`)
+    if installed, else falls back to the wire-compatible redis-py."""
+    def __init__(self, url: str, prefix: str = "bankmap:") -> None:
+        super().__init__(_redis_proto_client(url, prefer="valkey"), prefix)
 
 
 # --------------------------------------------------------------------------
@@ -184,6 +220,8 @@ def open_store(url: Optional[str]) -> KeyValueStore:
     """Return a KeyValueStore for a URL/path. `None` -> in-memory."""
     if not url or url == "memory://" or url == "memory:":
         return MemoryStore()
+    if url.startswith(("valkey://", "valkeys://")):
+        return ValkeyStore(url)
     if url.startswith(("redis://", "rediss://")):
         return RedisStore(url)
     if url.startswith(("postgresql://", "postgres://")):

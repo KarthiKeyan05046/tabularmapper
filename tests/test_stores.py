@@ -74,9 +74,52 @@ def test_mapping_cache_legacy_path_kwarg(tmp_path):
     assert isinstance(cache._store, stores.JsonFileStore)
 
 
-def test_redis_postgres_urls_route(monkeypatch):
+def test_redis_valkey_postgres_urls_route(monkeypatch):
     # don't connect; just prove the factory dispatches (import will fail w/o dep)
     with pytest.raises(Exception):
-        stores.open_store("redis://localhost:6379/0")   # redis not installed
+        stores.open_store("redis://localhost:6379/0")     # redis not installed
+    with pytest.raises(Exception):
+        stores.open_store("valkey://localhost:6379/0")    # valkey/redis not installed
     with pytest.raises(Exception):
         stores.open_store("postgresql://u@localhost/db")  # psycopg not installed
+
+
+class _FakeRedis:
+    """Minimal redis/valkey-protocol client for testing the shared store logic."""
+    def __init__(self): self.kv = {}
+    def get(self, k): return self.kv.get(k)
+    def set(self, k, v): self.kv[k] = v
+
+
+def test_redis_protocol_store_shared_by_redis_and_valkey():
+    s = stores._RedisProtocolStore(_FakeRedis(), prefix="bankmap:")
+    assert s.get("k") is None
+    s.put("k", {"a": 1}); assert s.get("k") == {"a": 1}
+    s.put("k", {"a": 2}); assert s.get("k") == {"a": 2}   # overwrite
+    assert issubclass(stores.RedisStore, stores._RedisProtocolStore)
+    assert issubclass(stores.ValkeyStore, stores._RedisProtocolStore)
+
+
+def test_valkey_client_scheme_normalization(monkeypatch):
+    """_redis_proto_client picks a driver and normalizes the scheme for it."""
+    captured = {}
+
+    class _FakeMod:
+        @staticmethod
+        def from_url(u):
+            captured["url"] = u
+            return _FakeRedis()
+
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name == "valkey":
+            return _FakeMod
+        if name == "redis":
+            raise ImportError("no redis")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    stores._redis_proto_client("rediss://h:6379", prefer="valkey")
+    assert captured["url"].startswith("valkeys://")   # normalized for valkey-py

@@ -624,6 +624,7 @@ point SQLAlchemy or Celery at a database — swap it with an env var, no code:
 BANK_MAPPER_CACHE=memory://                  # tests / single worker
 BANK_MAPPER_CACHE=sqlite:///mapping_cache.db # DEFAULT — file, no server, concurrency-safe
 BANK_MAPPER_CACHE=redis://localhost:6379/0   # multi-worker      (pip install ...[redis])
+BANK_MAPPER_CACHE=valkeys://user:pw@host/0   # Valkey e.g. Aiven (pip install ...[valkey])
 BANK_MAPPER_CACHE=postgresql://user@host/db  # shared, durable   (pip install ...[postgres])
 ```
 
