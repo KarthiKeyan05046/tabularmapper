@@ -14,9 +14,10 @@ wheels/
 *.standardized.xlsx
 /out*.xlsx
 
-# Runtime mapping cache (regenerated per format) — JSON or SQLite backends
+# Runtime stores (regenerated) — mapping cache + learned synonyms
 mapping_cache.json
 mapping_cache.db
+learned_synonyms.db
 *.db-wal
 *.db-shm
 

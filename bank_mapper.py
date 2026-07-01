@@ -42,12 +42,32 @@ from rapidfuzz import fuzz
 from schema import Config as _Config, load_config as _load_config  # noqa: E402
 
 _ACTIVE_CONFIG: _Config = _load_config()
+_LEARNED_SYNONYMS: dict = {}          # {field: [phrases]} from the learn store
 
 OUTPUT_SCHEMA: list[tuple[str, str]] = _ACTIVE_CONFIG.headers   # [(field, header)]
-SYNONYMS: dict[str, list[str]] = _ACTIVE_CONFIG.synonyms
+SYNONYMS: dict[str, list[str]] = {k: list(v) for k, v in _ACTIVE_CONFIG.synonyms.items()}
 CRITICAL_FIELDS: set = set(_ACTIVE_CONFIG.critical_fields)
 ALLOWED_FIELDS: list[str] = _ACTIVE_CONFIG.allowed_fields
 _FIELD_TYPES: dict[str, str] = _ACTIVE_CONFIG.field_types
+
+
+def _apply_synonyms() -> None:
+    """Rebuild the effective SYNONYMS + exact lookup = config seed + learned.
+
+    Config (seed) phrases are authoritative on conflict, so a learned phrase can
+    never override a seed's field. Learned phrases only *extend* the vocabulary.
+    """
+    global SYNONYMS, _EXACT_LOOKUP
+    merged = {f: list(v) for f, v in _ACTIVE_CONFIG.synonyms.items()}
+    for fld, phrases in _LEARNED_SYNONYMS.items():
+        merged.setdefault(fld, [])
+        for p in phrases:
+            if p not in merged[fld]:
+                merged[fld].append(p)
+    SYNONYMS = merged
+    lut = _build_exact_lookup(_LEARNED_SYNONYMS)      # learned first...
+    lut.update(_build_exact_lookup(_ACTIVE_CONFIG.synonyms))  # ...seed overrides
+    _EXACT_LOOKUP = lut
 
 
 def configure(source=None, config: "Optional[_Config]" = None) -> None:
@@ -55,17 +75,26 @@ def configure(source=None, config: "Optional[_Config]" = None) -> None:
 
     Pass a `config` object, or a `source` for load_config (path / http(s) URL /
     s3:// / dict). Rebuilds the derived globals and the exact-match lookup so a
-    new output template or synonym set takes effect immediately.
+    new output template or synonym set takes effect immediately. Learned
+    synonyms (if any) are re-merged on top.
     """
-    global _ACTIVE_CONFIG, OUTPUT_SCHEMA, SYNONYMS, CRITICAL_FIELDS
-    global ALLOWED_FIELDS, _FIELD_TYPES, _EXACT_LOOKUP
+    global _ACTIVE_CONFIG, OUTPUT_SCHEMA, CRITICAL_FIELDS
+    global ALLOWED_FIELDS, _FIELD_TYPES
     _ACTIVE_CONFIG = config if config is not None else _load_config(source)
     OUTPUT_SCHEMA = _ACTIVE_CONFIG.headers
-    SYNONYMS = _ACTIVE_CONFIG.synonyms
     CRITICAL_FIELDS = set(_ACTIVE_CONFIG.critical_fields)
     ALLOWED_FIELDS = _ACTIVE_CONFIG.allowed_fields
     _FIELD_TYPES = _ACTIVE_CONFIG.field_types
-    _EXACT_LOOKUP = _build_exact_lookup(SYNONYMS)
+    _apply_synonyms()
+
+
+def apply_learned(store) -> None:
+    """Load learned synonyms from a LearnStore and merge them into matching.
+    Call once at startup after configure(); process_file(..., learn_store=...)
+    keeps it fresh as new phrases are learned."""
+    global _LEARNED_SYNONYMS
+    _LEARNED_SYNONYMS = store.synonyms() if store is not None else {}
+    _apply_synonyms()
 
 
 # --------------------------------------------------------------------------
@@ -708,7 +737,7 @@ def merge_ai_mapping(col_maps: list[ColumnMap], ai: dict) -> list[ColumnMap]:
 # --------------------------------------------------------------------------
 def _run(rows: list[list], source_label: str, out_path, llm_fallback,
          table_matcher, scan_limit, threshold, cache,
-         output_format: OutputFormat) -> ProcessResult:
+         output_format: OutputFormat, learn_store=None) -> ProcessResult:
     """Shared core: detect header -> map -> (AI) -> extract -> review -> output.
     Works on already-read `rows` so it is source-agnostic (path or stream)."""
     if not rows:
@@ -746,23 +775,28 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
     if cache is not None and not from_cache and not needs_review:
         cache.put(header, col_maps)
 
-    # Build output result
-    output = OutputResult(
-        records=records,
-        format=output_format,
-        file_path=out_path,
+    result = ProcessResult(
+        input_path=source_label, output_path=out_path, header_index=hc.index,
+        header_score=hc.score, column_maps=col_maps, records=records,
+        needs_review=needs_review, review_reasons=reasons,
+        header_breakdown=hc.breakdown,
+        output=OutputResult(records=records, format=output_format,
+                            file_path=out_path),
     )
+
+    # Learn AI-resolved headers into the vocabulary, then refresh matching so the
+    # new phrases take effect immediately (next statement is an exact match).
+    # Gated fields (debit/credit) go to the learn store's pending queue.
+    if learn_store is not None and not from_cache:
+        from learn import learn_from_result
+        learn_from_result(result, learn_store)
+        apply_learned(learn_store)
 
     # For backward compat: still write file if out_path given and format is "file"
     if out_path and output_format == "file":
         _write_output(out_path, records)
 
-    return ProcessResult(
-        input_path=source_label, output_path=out_path, header_index=hc.index,
-        header_score=hc.score, column_maps=col_maps, records=records,
-        needs_review=needs_review, review_reasons=reasons,
-        header_breakdown=hc.breakdown, output=output,
-    )
+    return result
 
 
 # --------------------------------------------------------------------------
@@ -777,6 +811,7 @@ def process_file(
     scan_limit: int = 25,
     threshold: int = 80,
     cache: Optional["MappingCache"] = None,
+    learn_store=None,
 ) -> ProcessResult:
     """Read an .xlsx from a filesystem `path` and map it.
 
@@ -793,7 +828,7 @@ def process_file(
     """
     rows = _read_sheet(path)
     return _run(rows, path, out_path, llm_fallback, table_matcher,
-                scan_limit, threshold, cache, output_format)
+                scan_limit, threshold, cache, output_format, learn_store)
 
 
 def process_stream(
@@ -806,6 +841,7 @@ def process_stream(
     threshold: int = 80,
     cache: Optional["MappingCache"] = None,
     source_label: str = "<stream>",
+    learn_store=None,
 ) -> ProcessResult:
     """Map an .xlsx received as raw bytes or a binary file-like object — no temp
     file, nothing written to disk. Ideal for a FastAPI UploadFile: pass
@@ -824,7 +860,7 @@ def process_stream(
         fileobj = data  # already a binary file-like object
     rows = _read_sheet(fileobj)
     return _run(rows, source_label, out_path, llm_fallback, table_matcher,
-                scan_limit, threshold, cache, output_format)
+                scan_limit, threshold, cache, output_format, learn_store)
 
 
 # --------------------------------------------------------------------------

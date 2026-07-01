@@ -51,9 +51,16 @@ def build_matcher():
     return OpenAICompatibleMatcher()  # reads OPENAI_BASE_URL / OPENAI_MODEL too
 
 
+def build_learn_store():
+    """Self-learning vocabulary store (URL via BANK_MAPPER_LEARN_STORE)."""
+    from learn import LearnStore
+    return LearnStore()
+
+
 class _State:
     cache: Optional[MappingCache] = None
     matcher: Any = None
+    learn: Any = None
 
 
 state = _State()
@@ -66,6 +73,8 @@ async def lifespan(app: FastAPI):
     bank_mapper.configure(os.getenv("BANK_MAPPER_CONFIG"))
     state.cache = MappingCache()   # reads BANK_MAPPER_CACHE (URL) or the sqlite default
     state.matcher = build_matcher()
+    state.learn = build_learn_store()
+    bank_mapper.apply_learned(state.learn)   # activate already-learned synonyms
     yield
     # nothing to tear down
 
@@ -114,6 +123,7 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
         res = await run_in_threadpool(
             process_stream, data,
             table_matcher=state.matcher, cache=state.cache,
+            learn_store=state.learn,
             source_label=file.filename or "<upload>",
         )
     except Exception as exc:  # noqa: BLE001
@@ -130,6 +140,28 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
         }) for m in res.column_maps],
         transactions=res.records,
     )
+
+
+# --------------------------------------------------------------------------
+# Learning review — approve/reject the gated (debit/credit) pending queue
+# --------------------------------------------------------------------------
+@router.get("/learn/pending")
+async def learn_pending() -> dict:
+    return {"pending": state.learn.pending(), "stats": state.learn.stats()}
+
+
+@router.post("/learn/approve")
+async def learn_approve(phrase: str, field: Optional[str] = None) -> dict:
+    ok = await run_in_threadpool(state.learn.approve, phrase, field)
+    if ok:
+        bank_mapper.apply_learned(state.learn)   # activate immediately
+    return {"approved": ok, "stats": state.learn.stats()}
+
+
+@router.post("/learn/reject")
+async def learn_reject(phrase: str, field: Optional[str] = None) -> dict:
+    ok = await run_in_threadpool(state.learn.reject, phrase, field)
+    return {"rejected": ok, "stats": state.learn.stats()}
 
 
 # Standalone app (uvicorn bank_mapper_api:app)

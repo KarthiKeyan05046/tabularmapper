@@ -21,8 +21,9 @@ FIX = os.path.join(ROOT, "test_statements")
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    # isolate the cache file; keep AI off (no key)
+    # isolate the cache file; keep AI off (no key); learn store in memory
     monkeypatch.setenv("BANK_MAPPER_CACHE", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("BANK_MAPPER_LEARN_STORE", "memory://")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import importlib
     import bank_mapper_api

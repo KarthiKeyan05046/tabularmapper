@@ -6,6 +6,48 @@ bank format teaches the system once and never needs a code change.
 
 ---
 
+## STATUS: implemented (in `learn.py`)
+
+The core loop is built. What actually shipped differs from the original plan
+below in two ways, both improvements:
+
+- **Storage uses the `open_store(url)` convention** (see `stores.py`), not a
+  bespoke `synonyms.json`. Learned synonyms live in the same SQLite/Redis/Postgres
+  backend as the cache — concurrency-safe, selected by `BANK_MAPPER_LEARN_STORE`.
+- **Config ↔ learned split is enforced:** the config (`config.json`,
+  output_schema + seed synonyms) is read-only from S3/URL; the *learned* half is
+  the writeable store. Effective vocabulary at match time = seed + learned, with
+  the seed authoritative on conflict.
+
+Shipped API:
+
+```python
+from learn import LearnStore, learn_from_result
+from bank_mapper import apply_learned, process_file
+
+store = LearnStore()                    # BANK_MAPPER_LEARN_STORE or sqlite default
+apply_learned(store)                    # activate learned synonyms (call at startup)
+
+# per statement: process + learn in one call
+res = process_file("new_bank.xlsx", table_matcher=matcher, learn_store=store)
+
+# trust policy: date/description/reference/balance auto-apply; debit/credit are
+# GATED to a review queue (a wrong direction is the costly error):
+store.pending()                         # [{phrase, field, source, ...}]
+store.approve("outgoing", "debit")      # -> now an exact match everywhere
+store.reject("incoming", "credit")
+store.stats()                           # {applied, pending, conflicts}
+```
+
+FastAPI: the router auto-loads the store at startup, learns on every `/map`, and
+exposes `GET /statements/learn/pending`, `POST /statements/learn/approve`,
+`POST /statements/learn/reject`. Set `auto_apply_gated=True` on `LearnStore` for
+a fully unattended loop (no review queue).
+
+Not yet built from the plan below: the `harvest_folder` bootstrap (§7).
+
+---
+
 ## 1. Why change
 
 Today `SYNONYMS` is a Python constant. Adding a bank means editing code and

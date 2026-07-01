@@ -331,8 +331,39 @@ Everything keys off the `SYNONYMS` dict in `bank_mapper.py`
 
 3. Re-run. Exact matches score 100; near-misses are caught by fuzzy at ≥80.
 
-No code changes, no retraining. If a header is too novel for synonyms + fuzzy,
-the AI table matcher handles it automatically.
+No code changes, no retraining. But you usually won't do even this by hand —
+the self-learning loop grows the vocabulary for you (below).
+
+## Self-learning vocabulary (`learn.py`)
+
+The system teaches itself so you stop editing synonyms at all. When the AI
+resolves a new bank's header, that phrase is written to a **learn store** and
+becomes a deterministic **exact** match from then on — the AI never fires for it
+again. See `docs/self-learning-synonyms.md` for the full design.
+
+```python
+from learn import LearnStore
+from bank_mapper import apply_learned, process_file
+
+store = LearnStore()                 # BANK_MAPPER_LEARN_STORE (sqlite/redis/…) or sqlite default
+apply_learned(store)                 # activate learned synonyms at startup
+res = process_file("stmt.xlsx", table_matcher=matcher, learn_store=store)  # processes + learns
+```
+
+Trust policy (financial-data safe by default): `date` / `description` /
+`reference` / `balance` auto-apply; **`debit` / `credit` are gated to a review
+queue**, because a wrong debit/credit direction is the one costly error.
+
+```python
+store.pending()                      # gated phrases awaiting a human
+store.approve("outgoing", "debit")   # -> exact match everywhere afterward
+store.reject("incoming", "credit")
+```
+
+Effective vocabulary = seed (config) + learned, seed authoritative on conflict.
+In the API this is automatic: the router learns on every `/map` and exposes
+`GET/POST /statements/learn/{pending,approve,reject}`. Set
+`LearnStore(auto_apply_gated=True)` for a fully unattended loop.
 
 ## The AI table matcher (new banks, no manual work)
 
