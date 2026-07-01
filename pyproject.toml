@@ -8,46 +8,52 @@ version = "0.1.0"
 description = "Map any bank statement .xlsx to a standard schema (deterministic + optional AI column matcher)"
 readme = "README.md"
 requires-python = ">=3.9"
-# Core engine deps — required. The default build makes ZERO network calls.
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Karthikeyan Duraisamy", email = "karthikeyanduraisamy@kultivateindia.com" },
+]
+keywords = ["bank statement", "xlsx", "etl", "column mapping", "fintech", "openpyxl"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+# Core engine deps — required. The default build makes ZERO network calls and
+# needs no database driver (SQLite via the standard library).
 dependencies = [
     "openpyxl>=3.1",
     "rapidfuzz>=3.0",
     "python-dateutil>=2.8",
-    "redis>=7.0.1",
 ]
 
-# The AI table matcher (ai_matcher.py) uses only the Python standard library
-# (urllib) to call any OpenAI-compatible endpoint — no SDK dependency needed.
-# Set OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL to enable it.
-
+# The AI table matcher uses only the standard library (urllib) to call any
+# OpenAI-compatible endpoint — no SDK dependency. Set OPENAI_API_KEY etc.
 [project.optional-dependencies]
-# Install with `.[api]` to expose the FastAPI router (bank_mapper_api.py).
-api = [
-    "fastapi>=0.110",
-    "python-multipart>=0.0.9",
-]
-# Storage backends for the mapping cache / learned store (URL-selected).
-redis = ["redis>=5.0"]
-valkey = ["valkey>=6.0"]
-postgres = ["psycopg[binary]>=3.1"]
+api = ["fastapi>=0.110", "python-multipart>=0.0.9"]   # FastAPI router
+redis = ["redis>=5.0"]                                 # redis:// cache/learn store
+valkey = ["valkey>=6.0"]                               # valkey:// (Redis fork, e.g. Aiven)
+postgres = ["psycopg[binary]>=3.1"]                    # postgresql:// store
+dotenv = ["python-dotenv>=1.0"]                        # auto-load .env in the CLI
+
+[project.urls]
+Homepage = "https://github.com/KarthiKeyan05046/bank-statement-mapper"
+Repository = "https://github.com/KarthiKeyan05046/bank-statement-mapper"
+Issues = "https://github.com/KarthiKeyan05046/bank-statement-mapper/issues"
 
 [project.scripts]
-bank-mapper = "cli:main"
+bank-mapper = "bank_statement_mapper.cli:main"
 
-# Flat top-level modules (no src/ package). This is what makes the project
-# pip/uv-installable so a FastAPI backend can depend on it directly.
-[tool.setuptools]
-py-modules = [
-    "bank_mapper",
-    "schema",
-    "stores",
-    "learn",
-    "ai_matcher",
-    "llm_fallback",
-    "mapping_cache",
-    "bank_mapper_api",
-    "cli",
-]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

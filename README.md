@@ -31,18 +31,21 @@ Then     extract_records()     deterministic date/amount parsing, debit/credit
 ## Install
 
 ```bash
-pip install -e .    # core engine (openpyxl, rapidfuzz, python-dateutil)
-pip install pytest  # for tests
+pip install bank-statement-mapper            # core engine (openpyxl, rapidfuzz, python-dateutil)
+pip install "bank-statement-mapper[api]"     # + FastAPI router
+pip install "bank-statement-mapper[valkey]"  # + Valkey backend (also: [redis] [postgres] [dotenv])
 ```
 
-No SDK to add for the AI path — the LLM matcher uses only the standard library.
-The core install makes **zero network calls**; the AI only fires when you pass
-`--ai` (or a `table_matcher`) and only for a header the synonyms can't place.
+Then `from bank_statement_mapper import process_file`. No SDK is needed for the
+AI path — the LLM matcher uses only the standard library. The core install makes
+**zero network calls** and needs no database driver (SQLite via the stdlib); the
+AI only fires when you pass `--ai` (or a `table_matcher`) for a header the
+synonyms can't place. For development from a checkout: `pip install -e ".[api]"`.
 
 ## Run
 
 ```bash
-python cli.py <input.xlsx> [output.xlsx] [options]
+bank-mapper <input.xlsx> [output.xlsx] [options]
 ```
 
 Prints the detected header row, the full column mapping with confidences and
@@ -71,24 +74,24 @@ Examples:
 
 ```bash
 # Original behavior — write .xlsx to disk
-python cli.py "samples/PAYIR_FC_SBI_2025.xlsx"     # deterministic, no network
+bank-mapper "samples/PAYIR_FC_SBI_2025.xlsx"     # deterministic, no network
 
 # JSON output to stdout
-python cli.py statement.xlsx --format json
+bank-mapper statement.xlsx --format json
 
 # Raw .xlsx bytes — pipe to file
-python cli.py statement.xlsx --format bytes > out.xlsx
+bank-mapper statement.xlsx --format bytes > out.xlsx
 
 # Base64 encoded — embed in scripts
-python cli.py statement.xlsx --format base64
+bank-mapper statement.xlsx --format base64
 
 # Records as JSON — inspect raw data
-python cli.py statement.xlsx --format records
+bank-mapper statement.xlsx --format records
 
 # With AI and custom threshold
 export OPENAI_API_KEY=sk-...
-python cli.py new_bank.xlsx out.xlsx --ai --format file
-python cli.py new_bank.xlsx --fallback hashing --format json
+bank-mapper new_bank.xlsx out.xlsx --ai --format file
+bank-mapper new_bank.xlsx --fallback hashing --format json
 ```
 
 ## Output formats
@@ -108,8 +111,8 @@ The engine supports **five output formats** via the `output_format` parameter:
 Library use:
 
 ```python
-from bank_mapper import process_file, process_stream
-from mapping_cache import MappingCache
+from bank_statement_mapper import process_file, process_stream
+from bank_statement_mapper import MappingCache
 
 # --- File input, file output (original behavior) ---
 res = process_file("statement.xlsx", out_path="out.xlsx",
@@ -145,7 +148,7 @@ for rec in res.output.records:
 For CSV output, use the standalone serializer:
 
 ```python
-from bank_mapper import records_to_csv_bytes
+from bank_statement_mapper import records_to_csv_bytes
 csv_bytes = records_to_csv_bytes(res.records)
 ```
 
@@ -162,8 +165,8 @@ mapping, date/amount normalization). Serialization is cheap by comparison.
 ### Pattern 1: DB + S3 + audit log (one pass, three destinations)
 
 ```python
-from bank_mapper import process_stream, records_to_csv_bytes
-from mapping_cache import MappingCache
+from bank_statement_mapper import process_stream, records_to_csv_bytes
+from bank_statement_mapper import MappingCache
 import json
 
 # ONE extraction pass — zero serialization work
@@ -195,8 +198,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 import boto3
 
-from bank_mapper import process_stream
-from mapping_cache import MappingCache
+from bank_statement_mapper import process_stream
+from bank_statement_mapper import MappingCache
 
 CACHE = MappingCache()
 s3 = boto3.client("s3")
@@ -233,13 +236,13 @@ async def upload_statement(file: UploadFile, background: BackgroundTasks):
 
 ```bash
 # Extract once, pipe .xlsx to disk, capture JSON for logging
-python cli.py statement.xlsx --format bytes > out.xlsx
-python cli.py statement.xlsx --format json > mapping_log.json
+bank-mapper statement.xlsx --format bytes > out.xlsx
+bank-mapper statement.xlsx --format json > mapping_log.json
 
 # Or in a single script:
 python -c "
 import json, sys
-from bank_mapper import process_file
+from bank_statement_mapper import process_file
 
 res = process_file('statement.xlsx', output_format='records')
 
@@ -299,7 +302,7 @@ Load a config JSON from a file, an HTTP(S) URL, an S3 object, or a dict — see
 `config.example.json` for the shape:
 
 ```python
-from bank_mapper import configure
+from bank_statement_mapper import configure
 configure("config.json")                                  # local file
 configure("https://cdn.example.com/bank-config.json")     # any URL (stdlib)
 configure("s3://my-bucket/bank-config.json")              # S3 (presigned URL or boto3)
@@ -342,8 +345,8 @@ becomes a deterministic **exact** match from then on — the AI never fires for 
 again. See `docs/self-learning-synonyms.md` for the full design.
 
 ```python
-from learn import LearnStore
-from bank_mapper import apply_learned, process_file
+from bank_statement_mapper import LearnStore
+from bank_statement_mapper import apply_learned, process_file
 
 store = LearnStore()                 # BANK_MAPPER_LEARN_STORE (sqlite/redis/…) or sqlite default
 apply_learned(store)                 # activate learned synonyms at startup
@@ -369,7 +372,7 @@ In the API this is automatic: the router learns on every `/map` and exposes
 you already have (`harvest_folder`, or the CLI):
 
 ```bash
-python cli.py --harvest ./past_statements --learn sqlite:///learned.db
+bank-mapper --harvest ./past_statements --learn sqlite:///learned.db
 # add --ai to also resolve headers fuzzy can't place
 ```
 
@@ -411,8 +414,8 @@ is enforced by a test (`test_ai_matcher_sends_no_real_data`).
 using only the standard library (no SDK dependency). Point it wherever you like:
 
 ```python
-from bank_mapper import process_file
-from ai_matcher import OpenAICompatibleMatcher
+from bank_statement_mapper import process_file
+from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
 
 matcher = OpenAICompatibleMatcher(              # reads OPENAI_API_KEY / _BASE_URL / _MODEL
     base_url="https://api.openai.com/v1",       # or Azure / Together / local vLLM / Ollama
@@ -457,14 +460,14 @@ and AI matcher once at startup:
 
 ```python
 from fastapi import FastAPI
-from bank_mapper_api import router, lifespan
+from bank_statement_mapper.bank_mapper_api import router, lifespan
 
 app = FastAPI(lifespan=lifespan)     # or merge into your existing lifespan
 app.include_router(router)
 # -> POST /statements/map   (upload .xlsx)   GET /statements/health
 ```
 
-Run standalone to try it: `uvicorn bank_mapper_api:app --reload`.
+Run standalone to try it: `uvicorn bank_statement_mapper.bank_mapper_api:app --reload`.
 
 ### Option B — call the library yourself
 
@@ -479,9 +482,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse, JSONResponse
 import io
 
-from bank_mapper import process_stream, records_to_csv_bytes
-from mapping_cache import MappingCache
-from ai_matcher import OpenAICompatibleMatcher
+from bank_statement_mapper import process_stream, records_to_csv_bytes
+from bank_statement_mapper import MappingCache
+from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
 
 CACHE = MappingCache()
 MATCHER = OpenAICompatibleMatcher()          # reads OPENAI_* env; None-safe if no key
@@ -549,9 +552,9 @@ the DB, and both use the *same* upload bytes, so the file is read only once:
 import boto3, uuid
 from fastapi import UploadFile
 from fastapi.concurrency import run_in_threadpool
-from bank_mapper import process_stream
-from mapping_cache import MappingCache
-from ai_matcher import OpenAICompatibleMatcher
+from bank_statement_mapper import process_stream
+from bank_statement_mapper import MappingCache
+from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
 
 s3 = boto3.client("s3")
 CACHE = MappingCache()
@@ -667,18 +670,22 @@ caching, graceful API-error handling, and the no-real-data-leaks guarantee.
 ## Layout
 
 ```
-bank_mapper.py     engine: detect_header_row, map_columns, normalizers,
-                   extract_records, process_file, merge_ai_mapping, SYNONYMS
-                   OutputResult (records/json/bytes/base64/file), CSV serializer
-ai_matcher.py      OpenAICompatibleMatcher + profile_columns (AI table matcher)
-llm_fallback.py    HashingEmbeddingFallback / make_llm_fallback (offline fallback)
-bank_mapper_api.py FastAPI router (POST /statements/map) + standalone app
-mapping_cache.py   MappingCache (header fingerprint → mapping)
-cli.py             command-line runner with --format flag
-make_fixtures.py   regenerates test_statements/
-samples/           real bank statements for manual runs
-test_statements/   synthetic pytest fixtures
-tests/             pytest suite
+src/bank_statement_mapper/
+  __init__.py        public API re-exports (process_file, MappingCache, ...)
+  bank_mapper.py     engine: detect_header_row, map_columns, normalizers,
+                     extract_records, process_file/stream, OutputResult, configure
+  schema.py          loadable config (output template + synonyms; file/URL/s3)
+  stores.py          KeyValueStore + open_store(url): sqlite/redis/valkey/postgres
+  learn.py           LearnStore + learn_from_result + harvest_folder
+  ai_matcher.py      OpenAICompatibleMatcher + profile_columns (AI table matcher)
+  llm_fallback.py    HashingEmbeddingFallback / make_llm_fallback (offline)
+  mapping_cache.py   MappingCache (header fingerprint → mapping)
+  bank_mapper_api.py FastAPI router (POST /statements/map) + standalone app
+  cli.py             the `bank-mapper` console command
+pyproject.toml       packaging + optional extras ([api] [redis] [valkey] [postgres])
+samples/             real bank statements for manual runs (gitignored)
+test_statements/     synthetic pytest fixtures
+tests/               pytest suite
 ```
 
 ## Scope (v1)

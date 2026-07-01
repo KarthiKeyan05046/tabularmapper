@@ -10,11 +10,11 @@ import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
-import stores                       # noqa: E402
-from mapping_cache import MappingCache  # noqa: E402
-from bank_mapper import ColumnMap   # noqa: E402
+from bank_statement_mapper import stores                       # noqa: E402
+from bank_statement_mapper.mapping_cache import MappingCache  # noqa: E402
+from bank_statement_mapper.bank_mapper import ColumnMap   # noqa: E402
 
 
 def test_factory_routes_urls_to_backends(tmp_path):

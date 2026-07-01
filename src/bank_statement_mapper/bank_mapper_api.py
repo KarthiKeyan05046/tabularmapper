@@ -34,9 +34,9 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-import bank_mapper                    # imported as a module so OUTPUT_SCHEMA is read
-from bank_mapper import process_stream  # dynamically (after configure), never a stale copy
-from mapping_cache import MappingCache
+from . import bank_mapper                    # imported as a module so OUTPUT_SCHEMA is read
+from .bank_mapper import process_stream  # dynamically (after configure), never a stale copy
+from .mapping_cache import MappingCache
 
 
 # --------------------------------------------------------------------------
@@ -47,13 +47,13 @@ def build_matcher():
     (deterministic-only mode)."""
     if not os.getenv("OPENAI_API_KEY"):
         return None
-    from ai_matcher import OpenAICompatibleMatcher
+    from .ai_matcher import OpenAICompatibleMatcher
     return OpenAICompatibleMatcher()  # reads OPENAI_BASE_URL / OPENAI_MODEL too
 
 
 def build_learn_store():
     """Self-learning vocabulary store (URL via BANK_MAPPER_LEARN_STORE)."""
-    from learn import LearnStore
+    from .learn import LearnStore
     return LearnStore()
 
 

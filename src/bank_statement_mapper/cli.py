@@ -45,21 +45,21 @@ import argparse
 import os
 import sys
 
-from bank_mapper import process_file
-from mapping_cache import MappingCache
+from .bank_mapper import process_file
+from .mapping_cache import MappingCache
 
 
 def _build_fallback(kind: str):
     if kind == "none":
         return None
     if kind == "hashing":
-        from llm_fallback import HashingEmbeddingFallback
+        from .llm_fallback import HashingEmbeddingFallback
         return HashingEmbeddingFallback()
     raise ValueError(kind)
 
 
 def _maybe_matcher(args):
-    from ai_matcher import OpenAICompatibleMatcher
+    from .ai_matcher import OpenAICompatibleMatcher
     if not os.getenv("OPENAI_API_KEY"):
         print("warning: --ai set but OPENAI_API_KEY is empty; the AI call "
               "will fail and columns stay unmapped.", file=sys.stderr)
@@ -130,19 +130,19 @@ def main(argv=None) -> int:
 
     # Load the output template + synonyms before processing, so --config (or the
     # env var) actually takes effect instead of the built-in defaults.
-    from bank_mapper import configure, apply_learned
+    from .bank_mapper import configure, apply_learned
     configure(args.config or os.getenv("BANK_MAPPER_CONFIG"))
 
     # Learning: enabled by --learn or --harvest. `--learn` with no value uses the
     # env/sqlite default; `--learn URL` overrides.
     learn_store = None
     if args.learn is not None or args.harvest:
-        from learn import LearnStore
+        from .learn import LearnStore
         learn_store = LearnStore(args.learn or None)
         apply_learned(learn_store)
 
     if args.harvest:
-        from learn import harvest_folder
+        from .learn import harvest_folder
         matcher = _maybe_matcher(args) if args.ai else None
         report = harvest_folder(args.harvest, learn_store, table_matcher=matcher)
         print(f"Harvested {report['files']} file(s) from {args.harvest}")

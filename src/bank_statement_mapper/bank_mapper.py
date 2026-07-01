@@ -39,7 +39,7 @@ from rapidfuzz import fuzz
 # These module globals are kept for backward compatibility; everything reads
 # them, and configure() swaps them atomically.
 # --------------------------------------------------------------------------
-from schema import Config as _Config, load_config as _load_config  # noqa: E402
+from .schema import Config as _Config, load_config as _load_config  # noqa: E402
 
 _ACTIVE_CONFIG: _Config = _load_config()
 _LEARNED_SYNONYMS: dict = {}          # {field: [phrases]} from the learn store
@@ -788,7 +788,7 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
     # new phrases take effect immediately (next statement is an exact match).
     # Gated fields (debit/credit) go to the learn store's pending queue.
     if learn_store is not None and not from_cache:
-        from learn import learn_from_result
+        from .learn import learn_from_result
         learn_from_result(result, learn_store)
         apply_learned(learn_store)
 

@@ -13,10 +13,10 @@ import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
-import bank_mapper as bm            # noqa: E402
-from learn import LearnStore, learn_from_result  # noqa: E402
+from bank_statement_mapper import bank_mapper as bm            # noqa: E402
+from bank_statement_mapper.learn import LearnStore, learn_from_result  # noqa: E402
 
 FIX = os.path.join(ROOT, "test_statements")
 
@@ -110,7 +110,7 @@ def test_closed_loop_learned_header_becomes_exact():
 def test_process_file_learns_via_learn_store():
     """End-to-end: an AI-mapped run feeds the learn store; a non-gated field is
     applied and immediately usable."""
-    from ai_matcher import OpenAICompatibleMatcher
+    from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
     s = _store()
 
     def transport(messages):
@@ -127,8 +127,8 @@ def test_process_file_learns_via_learn_store():
 
 def test_harvest_folder(tmp_path):
     import shutil
-    from ai_matcher import OpenAICompatibleMatcher
-    from learn import harvest_folder
+    from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
+    from bank_statement_mapper.learn import harvest_folder
     shutil.copy(os.path.join(FIX, "05_weird_header.xlsx"), tmp_path / "acme.xlsx")
     s = _store()
 
@@ -147,7 +147,7 @@ def test_harvest_folder(tmp_path):
 def test_harvest_deterministic_no_matcher(tmp_path):
     """Without a matcher, harvest still promotes fuzzy (non-exact) matches."""
     import openpyxl
-    from learn import harvest_folder
+    from bank_statement_mapper.learn import harvest_folder
     wb = openpyxl.Workbook(); ws = wb.active
     ws.append(["Txn Dt", "Naration", "Ref", "Withdrawls", "Deposits"])  # fuzzy, misspelled
     ws.append(["01-06-2025", "x", "R1", "100", None])

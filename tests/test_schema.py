@@ -17,10 +17,10 @@ import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
-import bank_mapper as bm          # noqa: E402
-import schema                     # noqa: E402
+from bank_statement_mapper import bank_mapper as bm          # noqa: E402
+from bank_statement_mapper import schema                     # noqa: E402
 
 FIX = os.path.join(ROOT, "test_statements")
 SAMPLES = os.path.join(ROOT, "samples")

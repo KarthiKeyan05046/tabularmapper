@@ -30,7 +30,7 @@ import re
 import time
 from typing import Optional
 
-from stores import open_store
+from .stores import open_store
 
 _DEFAULT_URL = "learned_synonyms.db"
 _KEY = "learned"
@@ -178,7 +178,7 @@ def harvest_folder(folder: str, store: LearnStore, *,
     fuzzy can't place; omit it to harvest deterministically only.
     """
     import glob
-    from bank_mapper import process_file
+    from .bank_mapper import process_file
 
     pattern = os.path.join(folder, "**", "*.xlsx") if recursive \
         else os.path.join(folder, "*.xlsx")

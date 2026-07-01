@@ -10,7 +10,7 @@ import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("multipart")  # python-multipart, needed for UploadFile
@@ -26,7 +26,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("BANK_MAPPER_LEARN_STORE", "memory://")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import importlib
-    import bank_mapper_api
+    import bank_statement_mapper.bank_mapper_api as bank_mapper_api
     importlib.reload(bank_mapper_api)
     with TestClient(bank_mapper_api.app) as c:   # `with` runs lifespan
         yield c

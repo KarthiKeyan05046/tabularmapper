@@ -21,8 +21,8 @@ import os
 import re
 from typing import Optional
 
-from bank_mapper import ColumnMap
-from stores import open_store
+from .bank_mapper import ColumnMap
+from .stores import open_store
 
 # SQLite by default — a file, no server to run, but concurrency-safe (unlike the
 # old JSON file, which raced under multiple workers).
