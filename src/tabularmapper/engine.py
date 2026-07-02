@@ -94,13 +94,20 @@ def _apply_synonyms() -> None:
 def configure(source=None, config: "Optional[_Config]" = None) -> None:
     """Swap the active configuration at runtime.
 
-    Pass a `config` object, or a `source` for load_config (path / http(s) URL /
-    s3:// / dict). Rebuilds the derived globals and the exact-match lookup so a
-    new output template or synonym set takes effect immediately. Learned
-    synonyms (if any) are re-merged on top.
+    Accepts either a Config object or a `source` for load_config (path / http(s)
+    URL / s3:// / dict), positionally or by keyword — so all of these work:
+
+        configure(bank_preset())               # Config, positional
+        configure(config_from_dict({...}))     # Config, positional
+        configure("config.json")               # source
+        configure(config=my_config)            # explicit
+
+    Rebuilds the derived globals so the new schema takes effect immediately.
     """
     global _ACTIVE_CONFIG, OUTPUT_SCHEMA, CRITICAL_FIELDS
     global ALLOWED_FIELDS, _FIELD_TYPES
+    if config is None and isinstance(source, _Config):
+        source, config = None, source        # a Config passed positionally
     _ACTIVE_CONFIG = config if config is not None else _load_config(source)
     OUTPUT_SCHEMA = _ACTIVE_CONFIG.headers
     CRITICAL_FIELDS = set(_ACTIVE_CONFIG.critical_fields)
