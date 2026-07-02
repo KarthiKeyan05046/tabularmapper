@@ -38,9 +38,10 @@ from typing import Optional, Union
 
 _log = logging.getLogger("bank_mapper.schema")
 
-# Field types the engine understands. `money` and `number` are equivalent
-# (both parse to a signed float); `money` is kept for readability in bank configs.
-VALID_TYPES = {"date", "money", "number", "text"}
+# Field types the engine understands. `money`, `number` and `currency` are
+# equivalent (all parse to a signed float); the names are just for readability.
+VALID_TYPES = {"date", "money", "number", "currency", "text"}
+NUMERIC_TYPES = {"money", "number", "currency"}
 
 # --------------------------------------------------------------------------
 # Defaults — copied VERBATIM from the original bank_mapper.py constants so the

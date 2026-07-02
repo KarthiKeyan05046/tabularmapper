@@ -594,7 +594,7 @@ def extract_records(rows: list[list], header_idx: int,
                 v = cell(r, col_of.get(f))
                 if t == "date":
                     rec[f] = normalize_date(v)
-                elif t in ("money", "number"):
+                elif t in ("money", "number", "currency"):
                     rec[f] = normalize_amount(v)          # signed
                 else:
                     rec[f] = str(v).strip() if not _is_blank(v) else ""

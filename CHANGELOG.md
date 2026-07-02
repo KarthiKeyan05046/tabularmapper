@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- `currency` is now an accepted field `type`, equivalent to `number` / `money`
+  (previously an unknown type silently fell back to `money`).
 
 ## [1.0.1] — 2026-07-02
 
