@@ -21,14 +21,16 @@ FIX = os.path.join(ROOT, "test_statements")
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    # isolate the cache file; keep AI off (no key); learn store in memory
-    monkeypatch.setenv("BANK_MAPPER_CACHE", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("BANK_MAPPER_LEARN_STORE", "memory://")
+    # isolate the cache file; keep AI off (no key); learn store in memory;
+    # the fixtures are bank statements -> load the bank preset via config.
+    monkeypatch.setenv("SCHEMA_MAPPER_CACHE", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("SCHEMA_MAPPER_LEARN_STORE", "memory://")
+    monkeypatch.setenv("SCHEMA_MAPPER_CONFIG", os.path.join(ROOT, "config.example.json"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import importlib
-    import bank_statement_mapper.bank_mapper_api as bank_mapper_api
-    importlib.reload(bank_mapper_api)
-    with TestClient(bank_mapper_api.app) as c:   # `with` runs lifespan
+    import schema_mapper.api as api
+    importlib.reload(api)
+    with TestClient(api.app) as c:   # `with` runs lifespan
         yield c
 
 
@@ -64,7 +66,7 @@ def test_map_rejects_non_xlsx(client):
 
 
 def test_router_prefix_default_and_custom():
-    import bank_statement_mapper.bank_mapper_api as api
+    import schema_mapper.api as api
     assert {r.path for r in api.router.routes} == {
         "/mapper/health", "/mapper/map",
         "/mapper/learn/pending", "/mapper/learn/approve", "/mapper/learn/reject"}
@@ -74,6 +76,6 @@ def test_router_prefix_default_and_custom():
 
 
 def test_router_prefix_from_env(monkeypatch):
-    monkeypatch.setenv("BANK_MAPPER_ROUTE_PREFIX", "/ingest")
-    import bank_statement_mapper.bank_mapper_api as api
+    monkeypatch.setenv("SCHEMA_MAPPER_ROUTE_PREFIX", "/ingest")
+    import schema_mapper.api as api
     assert "/ingest/map" in {r.path for r in api.make_router().routes}

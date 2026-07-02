@@ -1,21 +1,21 @@
 """
-bank_mapper_api.py — drop-in FastAPI router for the bank statement mapper.
+api.py — drop-in FastAPI router for the bank statement mapper.
 
 Two ways to use it from your existing backend:
 
   A) Mount the router on your app (prefix defaults to /mapper):
 
         from fastapi import FastAPI
-        from bank_statement_mapper.bank_mapper_api import router, lifespan
+        from schema_mapper.api import router, lifespan
         app = FastAPI(lifespan=lifespan)      # builds cache + matcher once
         app.include_router(router)
         # -> POST /mapper/map , GET /mapper/health
 
-     Custom prefix: `make_router("/catalog")`, or set BANK_MAPPER_ROUTE_PREFIX.
+     Custom prefix: `make_router("/catalog")`, or set SCHEMA_MAPPER_ROUTE_PREFIX.
 
   B) Run it standalone:
 
-        uvicorn bank_statement_mapper.bank_mapper_api:app --reload
+        uvicorn schema_mapper.api:app --reload
 
 Design notes:
   * The MappingCache and the (optional) AI matcher are built ONCE in `lifespan`
@@ -36,8 +36,8 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from . import bank_mapper                    # imported as a module so OUTPUT_SCHEMA is read
-from .bank_mapper import process_stream  # dynamically (after configure), never a stale copy
+from . import engine                    # imported as a module so OUTPUT_SCHEMA is read
+from .engine import process_stream  # dynamically (after configure), never a stale copy
 from .mapping_cache import MappingCache
 
 
@@ -52,11 +52,11 @@ def build_matcher():
     from .ai_matcher import OpenAICompatibleMatcher
     # field descriptions come from the active config (not hardcoded)
     return OpenAICompatibleMatcher(
-        field_defs=bank_mapper._ACTIVE_CONFIG.field_descriptions)
+        field_defs=engine._ACTIVE_CONFIG.field_descriptions)
 
 
 def build_learn_store():
-    """Self-learning vocabulary store (URL via BANK_MAPPER_LEARN_STORE)."""
+    """Self-learning vocabulary store (URL via SCHEMA_MAPPER_LEARN_STORE)."""
     from .learn import LearnStore
     return LearnStore()
 
@@ -72,17 +72,17 @@ state = _State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the output template + synonyms from BANK_MAPPER_CONFIG (file / URL /
+    # Load the output template + synonyms from SCHEMA_MAPPER_CONFIG (file / URL /
     # s3:// / dict). Only if the env var is set — otherwise we keep whatever is
     # already active, so a manual `configure("config.json")` before startup is
     # NOT overwritten.
-    _cfg = os.getenv("BANK_MAPPER_CONFIG")
+    _cfg = os.getenv("SCHEMA_MAPPER_CONFIG")
     if _cfg:
-        bank_mapper.configure(_cfg)
-    state.cache = MappingCache()   # reads BANK_MAPPER_CACHE (URL) or the sqlite default
+        engine.configure(_cfg)
+    state.cache = MappingCache()   # reads SCHEMA_MAPPER_CACHE (URL) or the sqlite default
     state.matcher = build_matcher()
     state.learn = build_learn_store()
-    bank_mapper.apply_learned(state.learn)   # activate already-learned synonyms
+    engine.apply_learned(state.learn)   # activate already-learned synonyms
     yield
     # nothing to tear down
 
@@ -136,7 +136,7 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
         header_index=res.header_index,
         needs_review=res.needs_review,
         review_reasons=res.review_reasons,
-        schema_columns=[disp for _, disp in bank_mapper.OUTPUT_SCHEMA],
+        schema_columns=[disp for _, disp in engine.OUTPUT_SCHEMA],
         columns=[ColumnMapOut(**{
             "col_index": m.col_index, "raw_header": m.raw_header,
             "field": m.field, "confidence": m.confidence, "method": m.method,
@@ -152,7 +152,7 @@ async def learn_pending() -> dict:
 async def learn_approve(phrase: str, field: Optional[str] = None) -> dict:
     ok = await run_in_threadpool(state.learn.approve, phrase, field)
     if ok:
-        bank_mapper.apply_learned(state.learn)   # activate immediately
+        engine.apply_learned(state.learn)   # activate immediately
     return {"approved": ok, "stats": state.learn.stats()}
 
 
@@ -163,12 +163,12 @@ async def learn_reject(phrase: str, field: Optional[str] = None) -> dict:
 
 # --------------------------------------------------------------------------
 # Router factory — the prefix is configurable (default "/mapper", or the env
-# var BANK_MAPPER_ROUTE_PREFIX). This is a general table->schema mapper, so the
+# var SCHEMA_MAPPER_ROUTE_PREFIX). This is a general table->schema mapper, so the
 # route name isn't bank-specific and you can set your own.
 # --------------------------------------------------------------------------
 def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> APIRouter:
     if prefix is None:
-        prefix = os.getenv("BANK_MAPPER_ROUTE_PREFIX", "/mapper")
+        prefix = os.getenv("SCHEMA_MAPPER_ROUTE_PREFIX", "/mapper")
     r = APIRouter(prefix=prefix.rstrip("/"), tags=tags or ["mapper"])
     r.add_api_route("/health", health, methods=["GET"])
     r.add_api_route("/map", map_statement, methods=["POST"], response_model=MapResponse)
@@ -178,9 +178,9 @@ def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> AP
     return r
 
 
-# Default router instance -> /mapper/*  (or BANK_MAPPER_ROUTE_PREFIX)
+# Default router instance -> /mapper/*  (or SCHEMA_MAPPER_ROUTE_PREFIX)
 router = make_router()
 
-# Standalone app (uvicorn bank_statement_mapper.bank_mapper_api:app)
-app = FastAPI(title="Bank Statement Mapper", lifespan=lifespan)
+# Standalone app (uvicorn schema_mapper.api:app)
+app = FastAPI(title="Schema Mapper", lifespan=lifespan)
 app.include_router(router)

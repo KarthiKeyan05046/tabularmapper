@@ -1,21 +1,27 @@
 """
-bank_statement_mapper — map any bank statement .xlsx to a standard schema.
+schema_mapper — map any spreadsheet (.xlsx) to a schema you define.
 
 Two-stage, auditable pipeline: deterministic header detection + synonym/fuzzy
 column mapping, with an optional AI table matcher and a self-learning vocabulary.
+The engine is domain-agnostic; "bank statements" is just a built-in preset.
 
 Quick start:
 
-    from bank_statement_mapper import process_file, MappingCache
-    res = process_file("statement.xlsx", cache=MappingCache())
+    from schema_mapper import process_file, configure, config_from_dict
+    configure(config_from_dict({"output_schema": [...], "synonyms": {...}}))
+    res = process_file("file.xlsx")
     print(res.records)          # list[dict], ready for JSON / DB
 
+    # or the ready-made bank layout:
+    from schema_mapper import bank_preset, configure
+    configure(config=bank_preset())
+
 Heavier pieces are kept as submodules so importing this package stays light:
-    from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
-    from bank_statement_mapper.bank_mapper_api import router   # needs [api] extra
+    from schema_mapper.ai_matcher import OpenAICompatibleMatcher
+    from schema_mapper.api import router   # needs [api] extra
 """
 
-from .bank_mapper import (
+from .engine import (
     ALLOWED_FIELDS,
     OUTPUT_SCHEMA,
     ColumnMap,
@@ -33,7 +39,9 @@ from .bank_mapper import (
 )
 from .learn import LearnStore, harvest_folder, learn_from_result
 from .mapping_cache import MappingCache
-from .schema import Config, config_from_dict, default_config, load_config
+from .schema import (
+    Config, bank_preset, config_from_dict, default_config, load_config,
+)
 from .stores import open_store
 
 __version__ = "1.0.2"
@@ -51,6 +59,7 @@ __all__ = [
     "load_config",
     "config_from_dict",
     "default_config",
+    "bank_preset",
     "Config",
     "open_store",
     "ProcessResult",

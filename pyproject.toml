@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bank-statement-mapper"
+name = "schema-mapper"
 version = "1.0.2"
-description = "Map any bank statement .xlsx to a standard schema (deterministic + optional AI column matcher)"
+description = "Map any spreadsheet (.xlsx) to a schema you define — deterministic column mapping with an optional AI matcher"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -13,17 +13,16 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Karthikeyan Duraisamy", email = "karthikeyanduraisamy@kultivateindia.com" },
 ]
-keywords = ["bank statement", "xlsx", "etl", "column mapping", "fintech", "openpyxl"]
+keywords = ["schema mapping", "xlsx", "spreadsheet", "etl", "column mapping", "openpyxl"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "Intended Audience :: Financial and Insurance Industry",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 # Core engine deps — required. The default build makes ZERO network calls and
@@ -49,7 +48,7 @@ Repository = "https://github.com/KarthiKeyan05046/bank-statement-mapper"
 Issues = "https://github.com/KarthiKeyan05046/bank-statement-mapper/issues"
 
 [project.scripts]
-bank-mapper = "bank_statement_mapper.cli:main"
+schema-mapper = "schema_mapper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

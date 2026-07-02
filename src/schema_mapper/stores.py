@@ -182,7 +182,7 @@ class ValkeyStore(_RedisProtocolStore):
 # Postgres (optional dep, lazy import)
 # --------------------------------------------------------------------------
 class PostgresStore:
-    def __init__(self, url: str, table: str = "bank_mapper_kv") -> None:
+    def __init__(self, url: str, table: str = "engine_kv") -> None:
         try:
             import psycopg
         except ImportError as exc:

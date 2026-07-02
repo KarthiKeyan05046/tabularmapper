@@ -1,7 +1,7 @@
 """
 schema.py — externalized, loadable configuration for the mapper.
 
-Everything that used to be a hardcoded constant in `bank_mapper.py` — the output
+Everything that used to be a hardcoded constant in `engine.py` — the output
 template (`OUTPUT_SCHEMA`), the header vocabulary (`SYNONYMS`), and the critical
 fields — lives here as data, and can be loaded from a JSON file, an HTTP(S) URL,
 an S3 object, or an in-memory dict. Change the template by editing JSON in a
@@ -36,7 +36,7 @@ import urllib.request
 from dataclasses import dataclass, field as _field
 from typing import Optional, Union
 
-_log = logging.getLogger("bank_mapper.schema")
+_log = logging.getLogger("engine.schema")
 
 # Field types the engine understands, grouped by how they're parsed. Many
 # aliases so configs read naturally ("string", "integer", "currency", …).
@@ -48,10 +48,10 @@ TEXT_TYPES = {"text", "string", "str"}
 VALID_TYPES = DATE_TYPES | NUMERIC_TYPES | TEXT_TYPES
 
 # --------------------------------------------------------------------------
-# Defaults — copied VERBATIM from the original bank_mapper.py constants so the
+# Defaults — copied VERBATIM from the original engine.py constants so the
 # out-of-the-box behavior is byte-identical.
 # --------------------------------------------------------------------------
-DEFAULT_SCHEMA: list[dict] = [
+BANK_SCHEMA: list[dict] = [
     {"field": "date", "header": "Date", "type": "date",
      "description": "the transaction date (post/value/booking date)"},
     {"field": "description", "header": "Narration", "type": "text",
@@ -66,24 +66,24 @@ DEFAULT_SCHEMA: list[dict] = [
      "description": "running account balance after the transaction"},
 ]
 
-DEFAULT_CRITICAL_FIELDS: list[str] = ["date"]
+BANK_CRITICAL_FIELDS: list[str] = ["date"]
 
 # --- Bank preset behavior (all data, not engine logic) -------------------
 # reconcile: a single signed `amount` column is split into debit(-)/credit(+);
 #   when debit/credit are their own columns they're taken as positive.
-DEFAULT_RECONCILE: dict = {"signed": "amount", "negative": "debit", "positive": "credit"}
+BANK_RECONCILE: dict = {"signed": "amount", "negative": "debit", "positive": "credit"}
 # require_any: each group needs >=1 mapped field or the statement is flagged.
-DEFAULT_REQUIRE_ANY: list = [["debit", "credit", "amount"]]
+BANK_REQUIRE_ANY: list = [["debit", "credit", "amount"]]
 # row_keep_if_any: a row is a real record if >=1 of these has a value.
-DEFAULT_ROW_KEEP_IF_ANY: list = ["date", "debit", "credit"]
+BANK_ROW_KEEP_IF_ANY: list = ["date", "debit", "credit"]
 # continuation_field: a row with only this field folds into the row above it.
-DEFAULT_CONTINUATION_FIELD: Optional[str] = "description"
+BANK_CONTINUATION_FIELD: Optional[str] = "description"
 # descriptions for fields the AI matcher may see but that aren't output columns
-DEFAULT_FIELD_DESCRIPTIONS: dict = {
+BANK_FIELD_DESCRIPTIONS: dict = {
     "amount": "a SINGLE signed amount column (one column, +credit / -debit)",
 }
 
-DEFAULT_SYNONYMS: dict[str, list[str]] = {
+BANK_SYNONYMS: dict[str, list[str]] = {
     "date": [
         "date", "txn date", "transaction date", "value date", "posting date",
         "post date", "tran date", "date of transaction", "trans date", "dt",
@@ -196,29 +196,42 @@ def _infer_type(field_key: str) -> str:
 
 
 def default_config() -> Config:
+    """The built-in default: EMPTY. This is a general mapper, so with no config
+    it maps nothing — you must provide an output_schema + synonyms (a file/URL via
+    BANK_MAPPER_CONFIG, a dict, or configure()). Use `bank_preset()` for the
+    ready-made bank-statement schema."""
+    return Config(output_schema=[], synonyms={}, critical_fields=[])
+
+
+def bank_preset() -> Config:
+    """Ready-made preset for bank statements (Date, Narration, Reference, Debit,
+    Credit, Balance) with debit/credit reconciliation. Also in config.example.json.
+
+        from schema_mapper import bank_preset, configure
+        configure(config=bank_preset())
+    """
     return Config(
-        output_schema=[FieldSpec(**d) for d in DEFAULT_SCHEMA],
-        synonyms={k: list(v) for k, v in DEFAULT_SYNONYMS.items()},
-        critical_fields=list(DEFAULT_CRITICAL_FIELDS),
-        reconcile=dict(DEFAULT_RECONCILE),
-        require_any=[list(g) for g in DEFAULT_REQUIRE_ANY],
-        row_keep_if_any=list(DEFAULT_ROW_KEEP_IF_ANY),
-        continuation_field=DEFAULT_CONTINUATION_FIELD,
-        extra_field_descriptions=dict(DEFAULT_FIELD_DESCRIPTIONS),
+        output_schema=[FieldSpec(**d) for d in BANK_SCHEMA],
+        synonyms={k: list(v) for k, v in BANK_SYNONYMS.items()},
+        critical_fields=list(BANK_CRITICAL_FIELDS),
+        reconcile=dict(BANK_RECONCILE),
+        require_any=[list(g) for g in BANK_REQUIRE_ANY],
+        row_keep_if_any=list(BANK_ROW_KEEP_IF_ANY),
+        continuation_field=BANK_CONTINUATION_FIELD,
+        extra_field_descriptions=dict(BANK_FIELD_DESCRIPTIONS),
     )
 
 
 def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
-    """Build a Config from a parsed JSON dict. Missing keys use defaults."""
+    """Build a Config from a parsed JSON dict. This is the GENERIC path — nothing
+    bank-specific is assumed; declare what you want."""
     if not d.get("output_schema"):
-        # loaded successfully but no schema declared -> you'll get the DEFAULT
-        # columns (incl. balance). Usually a typo'd key or empty list.
         _log.warning(
-            "config %s has no non-empty 'output_schema' — using the DEFAULT "
-            "output columns (Date, Narration, Reference Number, Debit, Credit, "
-            "Balance). Check the key name.", _origin)
+            "config %s has no non-empty 'output_schema' — nothing will be mapped. "
+            "Provide output_schema (or use bank_preset() for the bank layout).",
+            _origin)
     specs: list[FieldSpec] = []
-    for item in d.get("output_schema") or DEFAULT_SCHEMA:
+    for item in d.get("output_schema") or []:
         if isinstance(item, dict):
             key = item["field"]
             specs.append(FieldSpec(
@@ -233,27 +246,11 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
     for s in specs:
         if s.type not in VALID_TYPES:
             s.type = _infer_type(s.field)
-    # MERGE user synonyms on top of the built-in defaults (don't replace them),
-    # so adding one phrase doesn't wipe out date/description/etc. matching.
-    # Set "replace_synonyms": true to start from an empty vocabulary instead.
-    if d.get("replace_synonyms"):
-        syn = {k: list(v) for k, v in (d.get("synonyms") or {}).items()}
-    else:
-        syn = {k: list(v) for k, v in DEFAULT_SYNONYMS.items()}
-        for fld, phrases in (d.get("synonyms") or {}).items():
-            base = syn.setdefault(fld, [])
-            for p in phrases:
-                if p not in base:
-                    base.append(p)
-    # Generic default: no critical fields unless declared (the bank preset in
-    # default_config() supplies ["date"]). This keeps non-bank configs from
-    # inheriting a bank-specific "date is required" rule.
+    # Synonyms are exactly what you declare — no bank defaults are merged in.
+    syn = {k: list(v) for k, v in (d.get("synonyms") or {}).items()}
     crit = d.get("critical_fields") or []
-    # Domain behavior defaults to EMPTY (generic mapper). Declare these keys to
-    # opt into bank-style reconciliation etc. — the built-in default config (used
-    # when no config is provided) supplies the bank preset.
     return Config(
-        output_schema=specs or [FieldSpec(**x) for x in DEFAULT_SCHEMA],
+        output_schema=specs,
         synonyms=syn,
         critical_fields=list(crit),
         reconcile=dict(d.get("reconcile") or {}),
@@ -299,7 +296,7 @@ def load_config(source: Optional[Union[str, dict]] = None,
     """Load configuration.
 
     source:
-      * None      -> env BANK_MAPPER_CONFIG, else the built-in defaults
+      * None      -> env SCHEMA_MAPPER_CONFIG, else the built-in defaults
       * dict      -> used directly
       * "s3://…"  -> S3 object (needs boto3) OR use a presigned https URL instead
       * "http(s)://…" / path / "file://…" -> fetched via stdlib urllib
@@ -308,7 +305,7 @@ def load_config(source: Optional[Union[str, dict]] = None,
     config never takes the service down) unless `strict=True`.
     """
     if source is None:
-        source = os.getenv("BANK_MAPPER_CONFIG")
+        source = os.getenv("SCHEMA_MAPPER_CONFIG")
     if source is None:
         return default_config()
     if isinstance(source, dict):
@@ -320,7 +317,7 @@ def load_config(source: Optional[Union[str, dict]] = None,
         if strict:
             raise
         _log.warning(
-            "BANK_MAPPER config %r failed to load (%s: %s) — falling back to "
+            "SCHEMA_MAPPER config %r failed to load (%s: %s) — falling back to "
             "built-in defaults", source, type(exc).__name__, exc)
         return default_config()
 

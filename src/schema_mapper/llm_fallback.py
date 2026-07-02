@@ -1,7 +1,7 @@
 """
 llm_fallback.py — pluggable fallback adapters for map_columns().
 
-Interface (matches bank_mapper.map_columns' `llm_fallback` param):
+Interface (matches engine.map_columns' `llm_fallback` param):
 
     fallback(header: str, samples: list[str], allowed_fields: list[str]) -> str | None
 

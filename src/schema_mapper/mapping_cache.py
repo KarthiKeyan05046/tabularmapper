@@ -7,7 +7,7 @@ the same header layout always resolves to the same cached mapping regardless
 of row content.
 
 Storage is pluggable via a URL (see stores.open_store):
-    MappingCache()                              # env BANK_MAPPER_CACHE, else sqlite default
+    MappingCache()                              # env SCHEMA_MAPPER_CACHE, else sqlite default
     MappingCache("sqlite:///mapping_cache.db")  # file, no server, concurrency-safe
     MappingCache("redis://localhost:6379/0")    # multi-worker
     MappingCache("memory://")                   # tests
@@ -21,11 +21,11 @@ import os
 import re
 from typing import Optional
 
-from .bank_mapper import ColumnMap
+from .engine import ColumnMap
 from .stores import open_store
 
 # In-memory by default — creates NO files. Persistence is opt-in: set
-# BANK_MAPPER_CACHE (or pass a URL) to a path / redis:// / valkey:// /
+# SCHEMA_MAPPER_CACHE (or pass a URL) to a path / redis:// / valkey:// /
 # postgresql://. In-memory still caches within a process (lost on restart).
 _DEFAULT_URL = "memory://"
 
@@ -44,7 +44,7 @@ def _fingerprint(header: list, namespace: str = "") -> str:
 class MappingCache:
     def __init__(self, source: Optional[str] = None, *, path: Optional[str] = None):
         # precedence: explicit source > legacy path kwarg > env > sqlite default
-        url = source or path or os.getenv("BANK_MAPPER_CACHE") or _DEFAULT_URL
+        url = source or path or os.getenv("SCHEMA_MAPPER_CACHE") or _DEFAULT_URL
         self.url = url
         self._store = open_store(url)
 

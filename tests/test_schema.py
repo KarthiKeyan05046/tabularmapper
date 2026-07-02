@@ -1,5 +1,5 @@
 """
-Tests for the externalized schema/config system (schema.py + bank_mapper.configure).
+Tests for the externalized schema/config system (schema.py + engine.configure).
 
 Guarantees:
   * default config is byte-identical to the legacy hardcoded constants
@@ -19,8 +19,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from bank_statement_mapper import bank_mapper as bm          # noqa: E402
-from bank_statement_mapper import schema                     # noqa: E402
+from schema_mapper import engine as bm          # noqa: E402
+from schema_mapper import schema                     # noqa: E402
 
 FIX = os.path.join(ROOT, "test_statements")
 SAMPLES = os.path.join(ROOT, "samples")
@@ -34,19 +34,26 @@ def _reset_config():
     bm.configure()
 
 
-def test_default_config_is_legacy_identical():
+def test_default_config_is_empty():
+    # This is a general mapper — with no config it maps nothing.
+    assert bm.OUTPUT_SCHEMA == []
+    assert bm.SYNONYMS == {}
+    assert bm.CRITICAL_FIELDS == set()
+
+
+def test_bank_preset_gives_bank_schema():
+    bm.configure(config=schema.bank_preset())
     assert bm.OUTPUT_SCHEMA == [
         ("date", "Date"), ("description", "Narration"),
         ("reference", "Reference Number"), ("debit", "Debit"),
         ("credit", "Credit"), ("balance", "Balance"),
     ]
-    assert bm.SYNONYMS == schema.DEFAULT_SYNONYMS
+    assert bm.SYNONYMS == schema.BANK_SYNONYMS
     assert bm.CRITICAL_FIELDS == {"date"}
-    assert bm.ALLOWED_FIELDS == ["date", "description", "reference",
-                                 "debit", "credit", "balance", "amount"]
 
 
-def test_default_extraction_unchanged():
+def test_bank_preset_extraction():
+    bm.configure(config=schema.bank_preset())
     res = bm.process_file(os.path.join(FIX, "01_junk_split.xlsx"))
     assert res.header_index == 5
     assert res.needs_review is False
@@ -61,6 +68,7 @@ def test_custom_schema_rename_reorder_drop():
             {"field": "credit", "header": "In", "type": "money"},
             {"field": "debit", "header": "Out", "type": "money"},
         ],
+        "synonyms": schema.BANK_SYNONYMS,     # need synonyms to match the headers
     })
     bm.configure(config=cfg)
     assert [h for _, h in bm.OUTPUT_SCHEMA] == ["When", "In", "Out"]
@@ -81,7 +89,7 @@ def test_custom_schema_adds_new_field_type():
             {"field": "debit", "header": "Debit", "type": "money"},
             {"field": "credit", "header": "Credit", "type": "money"},
         ],
-        "synonyms": dict(schema.DEFAULT_SYNONYMS,
+        "synonyms": dict(schema.BANK_SYNONYMS,
                          date=["txn date"], value_date=["value date"]),
     })
     bm.configure(config=cfg)
@@ -94,7 +102,7 @@ def test_custom_schema_adds_new_field_type():
     assert r0["date"] and r0["date"] != None            # original date still there
 
 
-def test_generic_non_bank_mapper():
+def test_generic_non_engine():
     """The engine has no hardcoded bank fields: a product-catalog config with no
     date/debit/credit, no reconcile and no require_any maps and extracts cleanly
     and is NOT flagged for review."""
@@ -142,8 +150,7 @@ def test_load_config_from_file(tmp_path):
 
 def test_bad_source_fails_safe_to_defaults():
     cfg = schema.load_config("s3://nope/missing.json")     # unreachable
-    assert cfg.fields == ["date", "description", "reference",
-                          "debit", "credit", "balance"]
+    assert cfg.fields == []                                 # default is now empty
     with pytest.raises(Exception):
         schema.load_config("s3://nope/missing.json", strict=True)
 
