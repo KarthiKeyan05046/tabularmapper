@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import Any, Optional
 
 from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
@@ -42,6 +43,13 @@ from .engine import OutputResult, process_stream  # dynamically (after configure
 from .mapping_cache import MappingCache
 
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+class OutFormat(str, Enum):
+    """Response shape for POST /map — rendered as a dropdown in the docs."""
+    json = "json"        # rows inline (default)
+    base64 = "base64"    # rows inline + a mapped .xlsx in file_base64
+    file = "file"        # download the .xlsx directly (binary, no JSON body)
 
 
 # --------------------------------------------------------------------------
@@ -122,9 +130,8 @@ async def health() -> dict:
 
 async def map_statement(
     file: UploadFile = File(...),
-    format: str = Query(
-        "json",
-        pattern="^(json|base64|file)$",
+    format: OutFormat = Query(
+        OutFormat.json,
         description="json = rows inline (default); base64 = rows inline + an "
                     ".xlsx encoded in file_base64; file = download the .xlsx "
                     "directly (binary, no JSON body).",
