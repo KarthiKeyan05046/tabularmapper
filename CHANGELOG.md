@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.1] — 2026-07-02
+
+### Added
+- **`/map` output formats.** The FastAPI endpoint takes a `?format=` query
+  param: `json` (default, unchanged), `base64` (the usual response plus a mapped
+  `.xlsx` in `file_base64`), and `file` (the `.xlsx` streamed back as a download,
+  no JSON body). The spreadsheet bytes are built lazily, so the default JSON path
+  is unaffected.
+
 ## [1.0.0] — 2026-07-02
 
 Initial release. A general spreadsheet (`.xlsx`) → schema mapper: it finds the
@@ -49,5 +58,6 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/KarthiKeyan05046/tabularmapper/releases/tag/v1.0.0
