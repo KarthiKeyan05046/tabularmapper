@@ -59,6 +59,48 @@ def test_map_deterministic(client):
     assert body["schema_columns"][0] == "Date"
 
 
+def test_map_format_base64(client):
+    import base64
+    with open(os.path.join(FIX, "01_junk_split.xlsx"), "rb") as fh:
+        payload = fh.read()
+    r = client.post("/mapper/map", params={"format": "base64"},
+                    files={"file": ("stmt.xlsx", io.BytesIO(payload))})
+    assert r.status_code == 200
+    body = r.json()
+    # rows still inline...
+    assert any(t["credit"] == 45000.0 for t in body["transactions"])
+    # ...plus a base64 .xlsx that decodes to a real zip (xlsx magic = PK)
+    assert body["file_base64"]
+    assert base64.b64decode(body["file_base64"])[:2] == b"PK"
+
+
+def test_map_format_file_download(client):
+    with open(os.path.join(FIX, "01_junk_split.xlsx"), "rb") as fh:
+        payload = fh.read()
+    r = client.post("/mapper/map", params={"format": "file"},
+                    files={"file": ("statement.xlsx", io.BytesIO(payload))})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert 'attachment; filename="statement_mapped.xlsx"' in r.headers["content-disposition"]
+    assert r.content[:2] == b"PK"          # real .xlsx bytes
+
+
+def test_map_default_format_has_no_file_base64(client):
+    with open(os.path.join(FIX, "01_junk_split.xlsx"), "rb") as fh:
+        payload = fh.read()
+    r = client.post("/mapper/map", files={"file": ("stmt.xlsx", io.BytesIO(payload))})
+    assert r.json()["file_base64"] is None
+
+
+def test_map_rejects_bad_format(client):
+    with open(os.path.join(FIX, "01_junk_split.xlsx"), "rb") as fh:
+        payload = fh.read()
+    r = client.post("/mapper/map", params={"format": "pdf"},
+                    files={"file": ("stmt.xlsx", io.BytesIO(payload))})
+    assert r.status_code == 422       # fails the regex pattern
+
+
 def test_map_rejects_non_xlsx(client):
     r = client.post("/mapper/map",
                     files={"file": ("notes.txt", io.BytesIO(b"hello"), "text/plain")})

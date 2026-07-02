@@ -32,13 +32,16 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
-from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
+from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from . import engine                    # imported as a module so OUTPUT_SCHEMA is read
-from .engine import process_stream  # dynamically (after configure), never a stale copy
+from .engine import OutputResult, process_stream  # dynamically (after configure), never a stale copy
 from .mapping_cache import MappingCache
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 # --------------------------------------------------------------------------
@@ -105,6 +108,9 @@ class MapResponse(BaseModel):
     schema_columns: list[str]
     columns: list[ColumnMapOut]
     transactions: list[dict]
+    # Populated only when ?format=base64 — a base64-encoded .xlsx of the mapped
+    # rows, ready to decode and save client-side. None otherwise.
+    file_base64: Optional[str] = None
 
 
 # --------------------------------------------------------------------------
@@ -114,8 +120,23 @@ async def health() -> dict:
     return {"status": "ok", "ai_enabled": state.matcher is not None}
 
 
-async def map_statement(file: UploadFile = File(...)) -> MapResponse:
-    """Upload a spreadsheet (.xlsx); get the standardized mapping + rows."""
+async def map_statement(
+    file: UploadFile = File(...),
+    format: str = Query(
+        "json",
+        pattern="^(json|base64|file)$",
+        description="json = rows inline (default); base64 = rows inline + an "
+                    ".xlsx encoded in file_base64; file = download the .xlsx "
+                    "directly (binary, no JSON body).",
+    ),
+):
+    """Upload a spreadsheet (.xlsx); get the standardized mapping + rows.
+
+    `format` controls what comes back:
+      * json    -> MapResponse with the rows in `transactions`
+      * base64  -> same MapResponse, plus a mapped .xlsx in `file_base64`
+      * file    -> the mapped .xlsx as a downloadable attachment
+    """
     name = (file.filename or "").lower()
     if not name.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="expected an .xlsx/.xls file")
@@ -132,6 +153,22 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=f"could not process file: {exc}")
 
+    # file -> stream the mapped .xlsx straight back as a download (no JSON body).
+    if format == "file":
+        xlsx = await run_in_threadpool(
+            lambda: OutputResult(records=res.records, format="bytes").bytes)
+        stem = os.path.splitext(os.path.basename(file.filename or "mapped"))[0]
+        return Response(
+            content=xlsx,
+            media_type=_XLSX_MIME,
+            headers={"Content-Disposition": f'attachment; filename="{stem}_mapped.xlsx"'},
+        )
+
+    file_b64 = None
+    if format == "base64":
+        file_b64 = await run_in_threadpool(
+            lambda: OutputResult(records=res.records, format="base64").base64)
+
     return MapResponse(
         header_index=res.header_index,
         needs_review=res.needs_review,
@@ -142,6 +179,7 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
             "field": m.field, "confidence": m.confidence, "method": m.method,
         }) for m in res.column_maps],
         transactions=res.records,
+        file_base64=file_b64,
     )
 
 
