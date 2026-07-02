@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-07-02
 
 First public release. Two-stage, auditable pipeline: deterministic header-row
 detection + synonym/fuzzy column mapping, deterministic date/amount parsing, and
