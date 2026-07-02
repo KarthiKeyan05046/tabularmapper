@@ -158,10 +158,21 @@ def test_config_page_served(client):
     assert "<!DOCTYPE html>" in r.text or "<html" in r.text.lower()
 
 
+def test_active_config_json(client):
+    # the client fixture loads config.example.json (the bank layout)
+    r = client.get("/mapper/config.json")
+    assert r.status_code == 200
+    body = r.json()
+    fields = [f["field"] for f in body["output_schema"]]
+    assert "date" in fields and "debit" in fields
+    assert body["synonyms"]                      # non-empty
+    assert body["critical_fields"] == ["date"]
+
+
 def test_router_prefix_default_and_custom():
     import tabularmapper.api as api
     assert {r.path for r in api.router.routes} == {
-        "/mapper/health", "/mapper/config", "/mapper/map",
+        "/mapper/health", "/mapper/config", "/mapper/config.json", "/mapper/map",
         "/mapper/learn/pending", "/mapper/learn/approve", "/mapper/learn/reject"}
     custom = api.make_router("/catalog/")
     assert "/catalog/map" in {r.path for r in custom.routes}

@@ -152,6 +152,15 @@ async def config_page() -> HTMLResponse:
         raise HTTPException(status_code=404, detail="config builder page not found")
 
 
+async def active_config() -> dict:
+    """The config the mapper is currently using (from TABULARMAPPER_CONFIG or a
+    manual configure()). The builder page fetches this to seed itself so you can
+    edit the live config instead of starting blank. `output_schema` is empty if
+    no config is loaded."""
+    from .schema import config_to_dict
+    return config_to_dict(engine._ACTIVE_CONFIG)
+
+
 async def map_statement(
     file: UploadFile = File(...),
     format: OutFormat = Query(
@@ -253,6 +262,7 @@ def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> AP
     r.add_api_route("/health", health, methods=["GET"])
     r.add_api_route("/config", config_page, methods=["GET"],
                     response_class=HTMLResponse, include_in_schema=False)
+    r.add_api_route("/config.json", active_config, methods=["GET"])
     r.add_api_route("/map", map_statement, methods=["POST"], response_model=MapResponse)
     r.add_api_route("/learn/pending", learn_pending, methods=["GET"])
     r.add_api_route("/learn/approve", learn_approve, methods=["POST"])

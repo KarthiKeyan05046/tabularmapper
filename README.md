@@ -234,6 +234,7 @@ app.include_router(router)
 | `POST` | `/mapper/map` | upload an `.xlsx`, get the mapping + rows (JSON) |
 | `GET` | `/mapper/health` | `{status, ai_enabled}` |
 | `GET` | `/mapper/config` | config-builder web page — design a schema, export `config.json` |
+| `GET` | `/mapper/config.json` | the mapper's currently-active config as JSON (the page's "Load current" uses this) |
 | `GET` | `/mapper/learn/pending` | debit/credit synonyms awaiting approval |
 | `POST` | `/mapper/learn/approve` | approve a pending synonym (`?phrase=&field=`) |
 | `POST` | `/mapper/learn/reject` | reject a pending synonym |

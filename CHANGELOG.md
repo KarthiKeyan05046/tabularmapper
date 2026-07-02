@@ -17,6 +17,9 @@ Nothing yet.
   fields, types, synonyms, descriptions, `critical_fields`/`require_any`/
   `reconcile` — with a live `config.json` preview plus copy/download. Bundled in
   the wheel via package-data, so it works from a pip install, not just a checkout.
+  Supports importing a `config.json` file, and a **Load current** button that
+  seeds the builder from the mapper's active config via the new
+  `GET /mapper/config.json` endpoint.
 
 ## [1.0.3] — 2026-07-02
 

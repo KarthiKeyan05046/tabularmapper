@@ -76,6 +76,9 @@
             <button onclick="document.getElementById('import-file').click()" class="px-3 py-1.5 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                 <i class="fa-solid fa-upload mr-1.5 text-xs"></i>Import
             </button>
+            <button onclick="app.loadFromServer()" title="Load the config the mapper is currently using" class="px-3 py-1.5 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                <i class="fa-solid fa-cloud-arrow-down mr-1.5 text-xs"></i>Load current
+            </button>
             <button onclick="app.exportToFile()" class="px-3 py-1.5 text-[13px] font-medium text-white bg-brand hover:bg-brand-dark rounded-lg transition-colors">
                 <i class="fa-solid fa-download mr-1.5 text-xs"></i>Export
             </button>
@@ -223,7 +226,11 @@
 
             static normalize(obj) {
                 obj = obj || {};
+                // Preserve any keys the builder doesn't edit (reconcile,
+                // row_keep_if_any, continuation_field, version, ...) so they
+                // survive an import → export round-trip instead of being dropped.
                 return {
+                    ...obj,
                     output_schema: Array.isArray(obj.output_schema) ? obj.output_schema : [],
                     synonyms: (obj.synonyms && typeof obj.synonyms === 'object' && !Array.isArray(obj.synonyms)) ? obj.synonyms : {},
                     critical_fields: Array.isArray(obj.critical_fields) ? obj.critical_fields : [],
@@ -280,6 +287,27 @@
                 };
                 reader.readAsText(file);
                 event.target.value = '';
+            }
+
+            async loadFromServer() {
+                // Fetch the mapper's currently-active config (GET .../config.json,
+                // resolved relative to this page at .../config) and load it.
+                if (this.data.output_schema.length &&
+                    !confirm("Replace the current schema with the config the mapper is using now?")) return;
+                try {
+                    const res = await fetch('config.json', { headers: { 'Accept': 'application/json' } });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const cfg = await res.json();
+                    if (!cfg.output_schema || !cfg.output_schema.length) {
+                        this.showToast("Server has no config loaded (empty schema)");
+                        return;
+                    }
+                    this.data = SchemaApp.normalize(cfg);
+                    this.init();
+                    this.showToast("Loaded the mapper's current config");
+                } catch (err) {
+                    this.showToast("Could not load current config — is the API running?");
+                }
             }
 
             exportToFile() {
