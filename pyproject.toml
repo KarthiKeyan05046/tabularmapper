@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tabularmapper"
-version = "1.0.3"
+version = "1.0.4"
 description = "Map any spreadsheet (.xlsx) to a schema you define — deterministic column mapping with an optional AI matcher"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -54,6 +54,11 @@ tabularmapper = "tabularmapper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Ship the config-builder page inside the wheel so GET /mapper/config works
+# from a pip-installed package (not just a source checkout).
+[tool.setuptools.package-data]
+tabularmapper = ["web/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

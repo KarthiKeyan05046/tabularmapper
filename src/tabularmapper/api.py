@@ -31,11 +31,12 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from . import engine                    # imported as a module so OUTPUT_SCHEMA is read
@@ -139,6 +140,17 @@ async def health() -> dict:
     return {"status": "ok", "ai_enabled": state.matcher is not None}
 
 
+_WEB_DIR = Path(__file__).resolve().parent / "web"
+
+
+async def config_page() -> HTMLResponse:
+    """Serve the self-contained config-builder page (src/tabularmapper/web/index.html)."""
+    index = _WEB_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="config builder page not found")
+    return HTMLResponse(index.read_text(encoding="utf-8"))
+
+
 async def map_statement(
     file: UploadFile = File(...),
     format: OutFormat = Query(
@@ -238,6 +250,8 @@ def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> AP
         prefix = os.getenv("TABULARMAPPER_ROUTE_PREFIX", "/mapper")
     r = APIRouter(prefix=prefix.rstrip("/"), tags=tags or ["mapper"])
     r.add_api_route("/health", health, methods=["GET"])
+    r.add_api_route("/config", config_page, methods=["GET"],
+                    response_class=HTMLResponse, include_in_schema=False)
     r.add_api_route("/map", map_statement, methods=["POST"], response_model=MapResponse)
     r.add_api_route("/learn/pending", learn_pending, methods=["GET"])
     r.add_api_route("/learn/approve", learn_approve, methods=["POST"])

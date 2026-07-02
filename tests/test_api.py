@@ -151,10 +151,17 @@ def test_default_threshold_reads_env(monkeypatch):
     assert api._default_threshold() == 80
 
 
+def test_config_page_served(client):
+    r = client.get("/mapper/config")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "<!DOCTYPE html>" in r.text or "<html" in r.text.lower()
+
+
 def test_router_prefix_default_and_custom():
     import tabularmapper.api as api
     assert {r.path for r in api.router.routes} == {
-        "/mapper/health", "/mapper/map",
+        "/mapper/health", "/mapper/config", "/mapper/map",
         "/mapper/learn/pending", "/mapper/learn/approve", "/mapper/learn/reject"}
     custom = api.make_router("/catalog/")
     assert "/catalog/map" in {r.path for r in custom.routes}
