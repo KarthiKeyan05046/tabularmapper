@@ -45,6 +45,17 @@ from .mapping_cache import MappingCache
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+def _default_threshold() -> int:
+    """The fuzzy-accept gate (0-100). Below this, a column is left unmapped and,
+    if it's a critical field, the AI matcher is asked to fill it. Raise it to
+    push borderline fuzzy matches to the AI instead of trusting them. Read from
+    TABULARMAPPER_THRESHOLD at request time; falls back to 80."""
+    try:
+        return max(0, min(100, int(os.getenv("TABULARMAPPER_THRESHOLD", "80"))))
+    except (TypeError, ValueError):
+        return 80
+
+
 class OutFormat(str, Enum):
     """Response shape for POST /map — rendered as a dropdown in the docs."""
     json = "json"        # rows inline (default)
@@ -136,6 +147,13 @@ async def map_statement(
                     ".xlsx encoded in file_base64; file = download the .xlsx "
                     "directly (binary, no JSON body).",
     ),
+    threshold: Optional[int] = Query(
+        None,
+        ge=0, le=100,
+        description="Fuzzy-accept gate 0-100. Overrides TABULARMAPPER_THRESHOLD "
+                    "(default 80) for this request. Raise it to send borderline "
+                    "fuzzy matches to the AI matcher instead of trusting them.",
+    ),
 ):
     """Upload a spreadsheet (.xlsx); get the standardized mapping + rows.
 
@@ -143,18 +161,22 @@ async def map_statement(
       * json    -> MapResponse with the rows in `transactions`
       * base64  -> same MapResponse, plus a mapped .xlsx in `file_base64`
       * file    -> the mapped .xlsx as a downloadable attachment
+
+    `threshold` (query) overrides the fuzzy gate for this one call; otherwise the
+    server default (TABULARMAPPER_THRESHOLD, else 80) is used.
     """
     name = (file.filename or "").lower()
     if not name.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="expected an .xlsx/.xls file")
 
+    gate = threshold if threshold is not None else _default_threshold()
     data = await file.read()          # raw bytes, parsed in memory (never hits disk)
     try:
         # blocking work -> threadpool; process_stream reads straight from bytes
         res = await run_in_threadpool(
             process_stream, data,
             table_matcher=state.matcher, cache=state.cache,
-            learn_store=state.learn,
+            learn_store=state.learn, threshold=gate,
             source_label=file.filename or "<upload>",
         )
     except Exception as exc:  # noqa: BLE001

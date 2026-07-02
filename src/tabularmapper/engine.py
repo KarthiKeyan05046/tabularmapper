@@ -810,7 +810,10 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
 
     from_cache = False
     col_maps = None
-    schema_sig = _schema_signature()     # scope the cache to the active schema
+    # Scope the cache to the active schema AND the fuzzy gate: a different
+    # threshold can change which columns map, so it must not reuse a mapping
+    # computed at another threshold.
+    schema_sig = f"{_schema_signature()}:t{threshold}"
     if cache is not None:
         cached = cache.get(header, namespace=schema_sig)
         if cached is not None:

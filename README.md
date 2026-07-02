@@ -125,6 +125,7 @@ All are optional; sensible defaults apply.
 | `TABULARMAPPER_LEARN_STORE` | `memory://` (no files) | where self-learned header synonyms live |
 | `TABULARMAPPER_CONFIG` | *(none — required)* | output template + synonyms JSON (file / `https://` / `s3://`) |
 | `TABULARMAPPER_ROUTE_PREFIX` | `/mapper` | FastAPI router path prefix |
+| `TABULARMAPPER_THRESHOLD` | `80` | fuzzy-accept gate (0–100); raise it to push borderline fuzzy matches to the AI matcher |
 | `OPENAI_API_KEY` | *(unset → AI off)* | enables the AI column matcher |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint |
 | `OPENAI_MODEL` | `gpt-4o-mini` | model name |
@@ -239,6 +240,18 @@ app.include_router(router)
 `POST /mapper/map` reads the upload in memory (no temp file) and runs the
 blocking work in a threadpool. Store the original file to S3 in your own endpoint
 if you need it — the mapper stays out of AWS.
+
+Two query params shape the request:
+
+```bash
+curl -F file=@f.xlsx "http://localhost:8000/mapper/map?format=base64"    # json + a mapped .xlsx in file_base64
+curl -F file=@f.xlsx "http://localhost:8000/mapper/map?format=file" -OJ  # download the mapped .xlsx
+curl -F file=@f.xlsx "http://localhost:8000/mapper/map?threshold=90"     # stricter fuzzy gate for this call
+```
+
+`format` is `json` (default) / `base64` / `file`. `threshold` (0–100) overrides
+`TABULARMAPPER_THRESHOLD` for one request — raise it to send borderline fuzzy
+matches to the AI matcher instead of trusting them.
 
 The `/mapper` prefix is configurable (this is a general table→schema mapper, not
 just banks): set `TABULARMAPPER_ROUTE_PREFIX`, or build the router yourself:

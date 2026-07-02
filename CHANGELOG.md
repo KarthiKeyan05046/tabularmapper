@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.3] — 2026-07-02
+
+### Added
+- **Configurable fuzzy threshold on `/map`.** New `TABULARMAPPER_THRESHOLD` env
+  var (default 80) sets the fuzzy-accept gate, and a per-request `?threshold=`
+  query param (0–100) overrides it. Raising the gate pushes borderline fuzzy
+  matches below it into the AI matcher instead of trusting them.
+
+### Changed
+- The mapping cache is now scoped to the threshold as well as the schema, so
+  changing the gate re-evaluates a layout instead of replaying a mapping computed
+  at a different threshold.
+
+### Fixed
+- Corrected stale `pip install bank-statement-mapper` hints in the Redis/Valkey/
+  Postgres error messages (now `tabularmapper`), and a `BANK_MAPPER_CONFIG`
+  reference in a docstring.
+
 ## [1.0.2] — 2026-07-02
 
 ### Added
@@ -69,7 +87,8 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/KarthiKeyan05046/tabularmapper/releases/tag/v1.0.0

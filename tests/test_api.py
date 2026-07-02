@@ -107,6 +107,50 @@ def test_map_rejects_non_xlsx(client):
     assert r.status_code == 400
 
 
+def _fuzzy_xlsx_bytes():
+    """A tiny bank sheet whose 'Descriptn' header only fuzzy-matches (score 90)."""
+    from openpyxl import Workbook
+    wb = Workbook(); ws = wb.active
+    ws.append(["Date", "Descriptn", "Debit", "Credit"])
+    ws.append(["01-06-2026", "Coffee", "150", ""])
+    ws.append(["02-06-2026", "Salary", "", "45000"])
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+
+def test_map_threshold_query_changes_mapping(client):
+    payload = _fuzzy_xlsx_bytes()
+
+    # default gate (80): 'Descriptn' (score 90) is accepted as fuzzy
+    r = client.post("/mapper/map", files={"file": ("s.xlsx", io.BytesIO(payload))})
+    cols = {c["raw_header"]: c for c in r.json()["columns"]}
+    assert cols["Descriptn"]["field"] == "description"
+    assert cols["Descriptn"]["method"] == "fuzzy"
+
+    # raise the gate above 90: the same column now falls through -> unmapped
+    r = client.post("/mapper/map", params={"threshold": 95},
+                    files={"file": ("s.xlsx", io.BytesIO(payload))})
+    cols = {c["raw_header"]: c for c in r.json()["columns"]}
+    assert cols["Descriptn"]["field"] is None
+
+
+def test_map_threshold_out_of_range(client):
+    payload = _fuzzy_xlsx_bytes()
+    for bad in (150, -1):
+        r = client.post("/mapper/map", params={"threshold": bad},
+                        files={"file": ("s.xlsx", io.BytesIO(payload))})
+        assert r.status_code == 422       # ge=0 / le=100 validation
+
+
+def test_default_threshold_reads_env(monkeypatch):
+    import tabularmapper.api as api
+    monkeypatch.setenv("TABULARMAPPER_THRESHOLD", "90")
+    assert api._default_threshold() == 90
+    monkeypatch.setenv("TABULARMAPPER_THRESHOLD", "banana")   # invalid -> falls back
+    assert api._default_threshold() == 80
+    monkeypatch.delenv("TABULARMAPPER_THRESHOLD", raising=False)
+    assert api._default_threshold() == 80
+
+
 def test_router_prefix_default_and_custom():
     import tabularmapper.api as api
     assert {r.path for r in api.router.routes} == {
