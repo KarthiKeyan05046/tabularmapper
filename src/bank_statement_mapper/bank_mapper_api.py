@@ -69,8 +69,12 @@ state = _State()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load the output template + synonyms from BANK_MAPPER_CONFIG (file / URL /
-    # s3:// / dict) so the endpoint honors your schema instead of the defaults.
-    bank_mapper.configure(os.getenv("BANK_MAPPER_CONFIG"))
+    # s3:// / dict). Only if the env var is set — otherwise we keep whatever is
+    # already active, so a manual `configure("config.json")` before startup is
+    # NOT overwritten.
+    _cfg = os.getenv("BANK_MAPPER_CONFIG")
+    if _cfg:
+        bank_mapper.configure(_cfg)
     state.cache = MappingCache()   # reads BANK_MAPPER_CACHE (URL) or the sqlite default
     state.matcher = build_matcher()
     state.learn = build_learn_store()

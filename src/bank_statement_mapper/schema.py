@@ -180,11 +180,22 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
     for s in specs:
         if s.type not in VALID_TYPES:
             s.type = _infer_type(s.field)
-    syn = d.get("synonyms") or DEFAULT_SYNONYMS
+    # MERGE user synonyms on top of the built-in defaults (don't replace them),
+    # so adding one phrase doesn't wipe out date/description/etc. matching.
+    # Set "replace_synonyms": true to start from an empty vocabulary instead.
+    if d.get("replace_synonyms"):
+        syn = {k: list(v) for k, v in (d.get("synonyms") or {}).items()}
+    else:
+        syn = {k: list(v) for k, v in DEFAULT_SYNONYMS.items()}
+        for fld, phrases in (d.get("synonyms") or {}).items():
+            base = syn.setdefault(fld, [])
+            for p in phrases:
+                if p not in base:
+                    base.append(p)
     crit = d.get("critical_fields") or DEFAULT_CRITICAL_FIELDS
     return Config(
         output_schema=specs or [FieldSpec(**x) for x in DEFAULT_SCHEMA],
-        synonyms={k: list(v) for k, v in syn.items()},
+        synonyms=syn,
         critical_fields=list(crit),
     )
 
