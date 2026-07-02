@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+- **FastAPI router prefix is now `/mapper` (was `/statements`)** and configurable:
+  set `BANK_MAPPER_ROUTE_PREFIX`, or build the router with `make_router("/custom")`.
+  The routes are no longer bank-specific. *Breaking for API clients calling
+  `/statements/*` — update them to `/mapper/*` (or your chosen prefix).*
 
 ## [1.0.2] — 2026-07-02
 

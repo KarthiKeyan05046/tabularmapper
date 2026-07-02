@@ -3,17 +3,19 @@ bank_mapper_api.py — drop-in FastAPI router for the bank statement mapper.
 
 Two ways to use it from your existing backend:
 
-  A) Mount the router on your app:
+  A) Mount the router on your app (prefix defaults to /mapper):
 
         from fastapi import FastAPI
-        from bank_mapper_api import router, lifespan
+        from bank_statement_mapper.bank_mapper_api import router, lifespan
         app = FastAPI(lifespan=lifespan)      # builds cache + matcher once
         app.include_router(router)
-        # -> POST /statements/map , GET /statements/health
+        # -> POST /mapper/map , GET /mapper/health
+
+     Custom prefix: `make_router("/catalog")`, or set BANK_MAPPER_ROUTE_PREFIX.
 
   B) Run it standalone:
 
-        uvicorn bank_mapper_api:app --reload
+        uvicorn bank_statement_mapper.bank_mapper_api:app --reload
 
 Design notes:
   * The MappingCache and the (optional) AI matcher are built ONCE in `lifespan`
@@ -106,19 +108,14 @@ class MapResponse(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# Router
+# Endpoint handlers (plain functions so the router prefix can be configured)
 # --------------------------------------------------------------------------
-router = APIRouter(prefix="/statements", tags=["statements"])
-
-
-@router.get("/health")
 async def health() -> dict:
     return {"status": "ok", "ai_enabled": state.matcher is not None}
 
 
-@router.post("/map", response_model=MapResponse)
 async def map_statement(file: UploadFile = File(...)) -> MapResponse:
-    """Upload a bank statement .xlsx; get the standardized mapping + rows."""
+    """Upload a spreadsheet (.xlsx); get the standardized mapping + rows."""
     name = (file.filename or "").lower()
     if not name.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="expected an .xlsx/.xls file")
@@ -148,15 +145,10 @@ async def map_statement(file: UploadFile = File(...)) -> MapResponse:
     )
 
 
-# --------------------------------------------------------------------------
-# Learning review — approve/reject the gated (debit/credit) pending queue
-# --------------------------------------------------------------------------
-@router.get("/learn/pending")
 async def learn_pending() -> dict:
     return {"pending": state.learn.pending(), "stats": state.learn.stats()}
 
 
-@router.post("/learn/approve")
 async def learn_approve(phrase: str, field: Optional[str] = None) -> dict:
     ok = await run_in_threadpool(state.learn.approve, phrase, field)
     if ok:
@@ -164,12 +156,31 @@ async def learn_approve(phrase: str, field: Optional[str] = None) -> dict:
     return {"approved": ok, "stats": state.learn.stats()}
 
 
-@router.post("/learn/reject")
 async def learn_reject(phrase: str, field: Optional[str] = None) -> dict:
     ok = await run_in_threadpool(state.learn.reject, phrase, field)
     return {"rejected": ok, "stats": state.learn.stats()}
 
 
-# Standalone app (uvicorn bank_mapper_api:app)
+# --------------------------------------------------------------------------
+# Router factory — the prefix is configurable (default "/mapper", or the env
+# var BANK_MAPPER_ROUTE_PREFIX). This is a general table->schema mapper, so the
+# route name isn't bank-specific and you can set your own.
+# --------------------------------------------------------------------------
+def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> APIRouter:
+    if prefix is None:
+        prefix = os.getenv("BANK_MAPPER_ROUTE_PREFIX", "/mapper")
+    r = APIRouter(prefix=prefix.rstrip("/"), tags=tags or ["mapper"])
+    r.add_api_route("/health", health, methods=["GET"])
+    r.add_api_route("/map", map_statement, methods=["POST"], response_model=MapResponse)
+    r.add_api_route("/learn/pending", learn_pending, methods=["GET"])
+    r.add_api_route("/learn/approve", learn_approve, methods=["POST"])
+    r.add_api_route("/learn/reject", learn_reject, methods=["POST"])
+    return r
+
+
+# Default router instance -> /mapper/*  (or BANK_MAPPER_ROUTE_PREFIX)
+router = make_router()
+
+# Standalone app (uvicorn bank_statement_mapper.bank_mapper_api:app)
 app = FastAPI(title="Bank Statement Mapper", lifespan=lifespan)
 app.include_router(router)

@@ -68,7 +68,7 @@ from fastapi import FastAPI
 from bank_statement_mapper.bank_mapper_api import router, lifespan
 
 app = FastAPI(lifespan=lifespan)              # lifespan wires cache + config + AI for you
-app.include_router(router)                    # -> POST /statements/map, GET /statements/health
+app.include_router(router)                    # -> POST /mapper/map, GET /mapper/health
 ```
 
 That's the whole integration. **Do not add your own cache manager** — the
@@ -113,9 +113,10 @@ All are optional; sensible defaults apply.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BANK_MAPPER_CACHE` | `sqlite:///mapping_cache.db` | where learned bank-layout mappings are cached ([backends](#storage-backends)) |
-| `BANK_MAPPER_LEARN_STORE` | `sqlite:///learned_synonyms.db` | where self-learned header synonyms live |
+| `BANK_MAPPER_CACHE` | `memory://` (no files) | where header→field mappings are cached ([backends](#storage-backends)) |
+| `BANK_MAPPER_LEARN_STORE` | `memory://` (no files) | where self-learned header synonyms live |
 | `BANK_MAPPER_CONFIG` | built-in | output template + synonyms JSON (file / `https://` / `s3://`) |
+| `BANK_MAPPER_ROUTE_PREFIX` | `/mapper` | FastAPI router path prefix |
 | `OPENAI_API_KEY` | *(unset → AI off)* | enables the AI column matcher |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint |
 | `OPENAI_MODEL` | `gpt-4o-mini` | model name |
@@ -221,15 +222,23 @@ app.include_router(router)
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/statements/map` | upload an `.xlsx`, get the mapping + rows (JSON) |
-| `GET` | `/statements/health` | `{status, ai_enabled}` |
-| `GET` | `/statements/learn/pending` | debit/credit synonyms awaiting approval |
-| `POST` | `/statements/learn/approve` | approve a pending synonym (`?phrase=&field=`) |
-| `POST` | `/statements/learn/reject` | reject a pending synonym |
+| `POST` | `/mapper/map` | upload an `.xlsx`, get the mapping + rows (JSON) |
+| `GET` | `/mapper/health` | `{status, ai_enabled}` |
+| `GET` | `/mapper/learn/pending` | debit/credit synonyms awaiting approval |
+| `POST` | `/mapper/learn/approve` | approve a pending synonym (`?phrase=&field=`) |
+| `POST` | `/mapper/learn/reject` | reject a pending synonym |
 
-`POST /statements/map` reads the upload in memory (no temp file) and runs the
+`POST /mapper/map` reads the upload in memory (no temp file) and runs the
 blocking work in a threadpool. Store the original file to S3 in your own endpoint
 if you need it — the mapper stays out of AWS.
+
+The `/mapper` prefix is configurable (this is a general table→schema mapper, not
+just banks): set `BANK_MAPPER_ROUTE_PREFIX`, or build the router yourself:
+
+```python
+from bank_statement_mapper.bank_mapper_api import make_router, lifespan
+app.include_router(make_router("/catalog"))     # -> POST /catalog/map, ...
+```
 
 ## Output formats
 

@@ -33,7 +33,7 @@ def client(tmp_path, monkeypatch):
 
 
 def test_health(client):
-    r = client.get("/statements/health")
+    r = client.get("/mapper/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert r.json()["ai_enabled"] is False       # no OPENAI_API_KEY
@@ -43,7 +43,7 @@ def test_map_deterministic(client):
     with open(os.path.join(FIX, "01_junk_split.xlsx"), "rb") as fh:
         payload = fh.read()
     r = client.post(
-        "/statements/map",
+        "/mapper/map",
         files={"file": ("stmt.xlsx", io.BytesIO(payload),
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
     )
@@ -58,6 +58,22 @@ def test_map_deterministic(client):
 
 
 def test_map_rejects_non_xlsx(client):
-    r = client.post("/statements/map",
+    r = client.post("/mapper/map",
                     files={"file": ("notes.txt", io.BytesIO(b"hello"), "text/plain")})
     assert r.status_code == 400
+
+
+def test_router_prefix_default_and_custom():
+    import bank_statement_mapper.bank_mapper_api as api
+    assert {r.path for r in api.router.routes} == {
+        "/mapper/health", "/mapper/map",
+        "/mapper/learn/pending", "/mapper/learn/approve", "/mapper/learn/reject"}
+    custom = api.make_router("/catalog/")
+    assert "/catalog/map" in {r.path for r in custom.routes}
+    assert "/statements/map" not in {r.path for r in custom.routes}
+
+
+def test_router_prefix_from_env(monkeypatch):
+    monkeypatch.setenv("BANK_MAPPER_ROUTE_PREFIX", "/ingest")
+    import bank_statement_mapper.bank_mapper_api as api
+    assert "/ingest/map" in {r.path for r in api.make_router().routes}
