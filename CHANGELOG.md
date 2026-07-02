@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.2] — 2026-07-02
+
 ### Fixed
 - The mapping cache is now scoped to the active schema. Previously the cache key
   was the header row only, so changing your config (e.g. adding a field) and
@@ -106,6 +110,7 @@ a human-review gate.
   are opt-in extras — the core install pulls no database driver and makes zero
   network calls. Connection URLs (with secrets) belong in env/`.env`, never code.
 
-[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/KarthiKeyan05046/bank-statement-mapper/releases/tag/v1.0.0
