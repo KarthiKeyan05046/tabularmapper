@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.2] — 2026-07-02
+
+### Added
+- Broader Python support: classifiers now cover 3.9 through 3.14
+  (`requires-python` stays `>=3.9`).
+
+### Changed
+- `/map`'s `format` parameter is now an enum, so the interactive API docs
+  (`/docs`) render it as a dropdown — `json` / `base64` / `file` — instead of a
+  free-text field. Behavior is unchanged.
+
 ## [1.0.1] — 2026-07-02
 
 ### Added
@@ -58,6 +69,7 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/KarthiKeyan05046/tabularmapper/releases/tag/v1.0.0
