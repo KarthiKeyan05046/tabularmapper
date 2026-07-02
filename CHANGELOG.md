@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [1.0.4] — 2026-07-02
+## [1.0.5] — 2026-07-02
 
 ### Added
 - **Config-builder web page.** `GET /mapper/config` serves a self-contained
@@ -99,8 +99,8 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.4...HEAD
-[1.0.4]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.3...v1.0.4
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.3...v1.0.5
 [1.0.3]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.0...v1.0.1
