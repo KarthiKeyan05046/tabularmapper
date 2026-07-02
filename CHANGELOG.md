@@ -49,5 +49,5 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/KarthiKeyan05046/bank-statement-mapper/releases/tag/v1.0.0
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/KarthiKeyan05046/tabularmapper/releases/tag/v1.0.0

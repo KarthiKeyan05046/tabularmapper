@@ -43,9 +43,9 @@ postgres = ["psycopg[binary]>=3.1"]                    # postgresql:// store
 dotenv = ["python-dotenv>=1.0"]                        # auto-load .env in the CLI
 
 [project.urls]
-Homepage = "https://github.com/KarthiKeyan05046/bank-statement-mapper"
-Repository = "https://github.com/KarthiKeyan05046/bank-statement-mapper"
-Issues = "https://github.com/KarthiKeyan05046/bank-statement-mapper/issues"
+Homepage = "https://github.com/KarthiKeyan05046/tabularmapper"
+Repository = "https://github.com/KarthiKeyan05046/tabularmapper"
+Issues = "https://github.com/KarthiKeyan05046/tabularmapper/issues"
 
 [project.scripts]
 tabularmapper = "tabularmapper.cli:main"
