@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `currency` is now an accepted field `type`, equivalent to `number` / `money`
   (previously an unknown type silently fell back to `money`).
 
+### Changed
+- Column mapping only assigns fields declared in your `output_schema` (plus any
+  `reconcile`/`amount` fields). A header recognized as a field you didn't declare
+  is now reported with `field: null` and `method: "not_in_schema"` instead of
+  showing a field that never appears in the output. Merged default synonyms no
+  longer leak unrelated fields (e.g. `credit`/`balance`) into a 2-column config.
+
 ## [1.0.1] — 2026-07-02
 
 ### Documentation

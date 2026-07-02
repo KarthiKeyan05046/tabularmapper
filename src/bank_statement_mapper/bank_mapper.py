@@ -344,9 +344,14 @@ _EXACT_LOOKUP: dict[str, str] = _build_exact_lookup(SYNONYMS)
 
 
 def _fuzzy_best(header: str) -> tuple[Optional[str], int]:
-    """Best fuzzy field + score across all synonym phrases."""
+    """Best fuzzy field + score across the synonym phrases of fields that are
+    actually in the active schema (ALLOWED_FIELDS). Synonyms for fields you
+    didn't declare are ignored, so they never sneak into the mapping."""
+    allowed = set(ALLOWED_FIELDS)
     best_field, best_score = None, 0
     for fld, phrases in SYNONYMS.items():
+        if fld not in allowed:
+            continue
         for p in phrases:
             s = fuzz.token_set_ratio(header, p)
             # token_set_ratio can over-reward; blend with a stricter ratio
@@ -385,7 +390,12 @@ def map_columns(
 
         # 1. exact
         if key in _EXACT_LOOKUP:
-            maps.append(ColumnMap(ci, raw_str, _EXACT_LOOKUP[key], 100, "exact"))
+            ef = _EXACT_LOOKUP[key]
+            if ef in ALLOWED_FIELDS:
+                maps.append(ColumnMap(ci, raw_str, ef, 100, "exact"))
+            else:
+                # recognized, but that field isn't in your output schema -> skip
+                maps.append(ColumnMap(ci, raw_str, None, 0, "not_in_schema"))
             continue
 
         # 2. fuzzy
