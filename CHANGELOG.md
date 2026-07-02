@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.1] — 2026-07-02
+
+### Documentation
+- Document the runtime SQLite files created at startup — `mapping_cache.db`,
+  `learned_synonyms.db`, and the `.db-wal` / `.db-shm` Write-Ahead-Logging
+  sidecars — including why they appear and how to control storage via
+  `BANK_MAPPER_CACHE` / `BANK_MAPPER_LEARN_STORE` (`memory://` for no files, a
+  filesystem path, or a Redis/Valkey/Postgres URL). Added a matching FAQ entry.
+
 ## [1.0.0] — 2026-07-02
 
 First public release. Two-stage, auditable pipeline: deterministic header-row
@@ -69,5 +78,6 @@ a human-review gate.
   are opt-in extras — the core install pulls no database driver and makes zero
   network calls. Connection URLs (with secrets) belong in env/`.env`, never code.
 
-[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/KarthiKeyan05046/bank-statement-mapper/releases/tag/v1.0.0
