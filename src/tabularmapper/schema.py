@@ -198,7 +198,7 @@ def _infer_type(field_key: str) -> str:
 def default_config() -> Config:
     """The built-in default: EMPTY. This is a general mapper, so with no config
     it maps nothing — you must provide an output_schema + synonyms (a file/URL via
-    BANK_MAPPER_CONFIG, a dict, or configure()). Use `bank_preset()` for the
+    TABULARMAPPER_CONFIG, a dict, or configure()). Use `bank_preset()` for the
     ready-made bank-statement schema."""
     return Config(output_schema=[], synonyms={}, critical_fields=[])
 
