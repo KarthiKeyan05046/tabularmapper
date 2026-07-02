@@ -58,7 +58,7 @@ where = ["src"]
 # Ship the config-builder page inside the wheel so GET /mapper/config works
 # from a pip-installed package (not just a source checkout).
 [tool.setuptools.package-data]
-tabularmapper = ["web/*.html"]
+tabularmapper = ["static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

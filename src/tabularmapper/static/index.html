@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabular Mapper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            DEFAULT: '#ED0E4C',
+                            dark: '#C90B40',
+                            tint: '#FDE7EE',
+                        },
+                    },
+                },
+            },
+        };
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: #f7f8fa;
+        }
+
+        .code-font {
+            font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d4d7dd;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #b9bdc6;
+        }
+        .code-panel ::-webkit-scrollbar-thumb {
+            background: #2a2f3a;
+        }
+        .code-panel ::-webkit-scrollbar-thumb:hover {
+            background: #3a404d;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-800">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 h-14 flex items-center justify-between px-6 shrink-0">
+        <div class="flex items-center gap-2.5">
+            <div class="bg-brand text-white w-8 h-8 flex items-center justify-center rounded-lg">
+                <i class="fa-solid fa-layer-group text-sm"></i>
+            </div>
+            <div>
+                <h1 class="font-semibold text-[15px] leading-tight text-slate-900">Tabular Mapper</h1>
+                <p class="text-[11px] text-slate-400 leading-tight">xlsx mapping config</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <input type="file" id="import-file" accept=".json,application/json" class="hidden" onchange="app.importFromFile(event)">
+            <button onclick="app.loadSample()" class="px-3 py-1.5 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                <i class="fa-solid fa-table-list mr-1.5 text-xs"></i>Load sample
+            </button>
+            <button onclick="document.getElementById('import-file').click()" class="px-3 py-1.5 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                <i class="fa-solid fa-upload mr-1.5 text-xs"></i>Import
+            </button>
+            <button onclick="app.exportToFile()" class="px-3 py-1.5 text-[13px] font-medium text-white bg-brand hover:bg-brand-dark rounded-lg transition-colors">
+                <i class="fa-solid fa-download mr-1.5 text-xs"></i>Export
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Left Panel: Editor -->
+        <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+            <div class="p-6 max-w-4xl mx-auto w-full space-y-6 pb-16">
+
+                <!-- Fields -->
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+                        <div>
+                            <h2 class="font-semibold text-sm text-slate-800">Fields</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Header, type, description, synonyms, and the critical flag — all in one place.</p>
+                        </div>
+                        <button onclick="app.addField()" class="text-xs font-medium text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 hover:text-brand hover:border-brand/40 transition-colors">
+                            <i class="fa-solid fa-plus mr-1 text-[10px]"></i>Add field
+                        </button>
+                    </div>
+
+                    <div class="p-5 space-y-3" id="fields-container"></div>
+
+                    <div id="add-field-footer" class="hidden px-5 pb-5">
+                        <button onclick="app.addField()" class="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 text-[13px] font-medium hover:border-brand/50 hover:text-brand transition-colors">
+                            <i class="fa-solid fa-plus mr-1 text-[10px]"></i>Add field
+                        </button>
+                    </div>
+
+                    <div id="empty-state-schema" class="hidden py-14 text-center">
+                        <div class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-slate-100 mb-3">
+                            <i class="fa-solid fa-table-list text-slate-400 text-sm"></i>
+                        </div>
+                        <p class="text-slate-500 text-sm mb-4">No schema loaded yet.</p>
+                        <div class="flex items-center justify-center gap-2">
+                            <button onclick="app.loadSample()" class="text-[13px] font-medium bg-brand hover:bg-brand-dark text-white px-3.5 py-1.5 rounded-lg transition-colors">Load sample data</button>
+                            <button onclick="document.getElementById('import-file').click()" class="text-[13px] font-medium text-slate-600 border border-slate-200 px-3.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">Import schema.json</button>
+                            <button onclick="app.addField()" class="text-[13px] font-medium text-slate-600 border border-slate-200 px-3.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">Start blank</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Require Any -->
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-100">
+                        <h2 class="font-semibold text-sm text-slate-800">Require any</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">At least one field from each group must exist in the output.</p>
+                    </div>
+                    <div class="p-5 space-y-3" id="require-any-container"></div>
+                    <div class="px-5 pb-5">
+                        <button onclick="app.addRequireAnyGroup()" class="w-full py-2 border border-dashed border-slate-300 rounded-lg text-slate-500 text-[13px] font-medium hover:border-brand/50 hover:text-brand transition-colors">
+                            <i class="fa-solid fa-plus mr-1 text-[10px]"></i>Add group
+                        </button>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+        <!-- Right Panel: Preview -->
+        <div class="code-panel w-[420px] bg-[#0d1117] flex flex-col shrink-0 border-l border-slate-200">
+            <div class="px-4 py-2.5 border-b border-white/10 flex justify-between items-center">
+                <span class="text-xs font-mono text-slate-400 code-font">schema.json</span>
+                <button onclick="app.copyToClipboard()" class="text-xs font-medium text-slate-300 border border-white/15 px-2.5 py-1 rounded-md hover:bg-white/10 transition-colors">
+                    <i class="fa-regular fa-copy mr-1.5 text-[10px]"></i>Copy
+                </button>
+            </div>
+            <div class="flex-1 overflow-auto p-4">
+                <pre class="code-font text-[13px] leading-relaxed"><code id="json-preview" class="text-slate-200"></code></pre>
+            </div>
+            <div class="px-4 py-2 border-t border-white/10 text-xs text-slate-500 flex justify-between code-font">
+                <span>live preview</span>
+                <span id="char-count">0 chars</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-2.5 z-50 text-sm">
+        <i class="fa-solid fa-circle-check text-brand"></i>
+        <span id="toast-message">Action Successful</span>
+    </div>
+
+    <script>
+        const DEFAULT_DATA = {
+            "output_schema": [
+                {
+                    "field": "date",
+                    "header": "Date",
+                    "type": "date",
+                    "description": "The date the transaction was posted or executed. May appear as transaction date, value date, or posting date in source data — these can differ by 1-2 days for the same transaction; prefer transaction/posting date over value date unless the source only provides one."
+                },
+                {
+                    "field": "narration",
+                    "header": "Narration",
+                    "type": "string",
+                    "description": "Free-text description of the transaction, such as the payee, purpose, or transaction type (e.g., 'NEFT TRANSFER TO XYZ', 'ATM WITHDRAWAL'). Often the longest and most variably formatted field in the source; do not truncate or attempt to parse structured data out of it unless separately instructed."
+                },
+                {
+                    "field": "reference_number",
+                    "header": "Reference Number",
+                    "type": "string",
+                    "description": "A unique identifier for the transaction, such as a cheque number, UTR, RRN, or transaction ID. Frequently blank for cash, UPI, or POS transactions — absence is normal and should not be treated as a mapping failure."
+                },
+                {
+                    "field": "debit",
+                    "header": "Debit",
+                    "type": "currency",
+                    "description": "Amount withdrawn or paid out in this transaction. Should be blank or zero if the transaction is a credit. Strip currency symbols and thousand separators before parsing to numeric."
+                },
+                {
+                    "field": "credit",
+                    "header": "Credit",
+                    "type": "currency",
+                    "description": "Amount deposited or received in this transaction. Should be blank or zero if the transaction is a debit. Strip currency symbols and thousand separators before parsing to numeric."
+                }
+            ],
+            "synonyms": {
+                "date": ["date", "txn date", "transaction date", "value date", "posting date", "entry date", "book date", "date of transaction", "trans date", "value dt", "txn dt", "date/time", "date & time"],
+                "narration": ["narration", "description", "particulars", "transaction details", "transaction description", "details", "remarks", "memo", "transaction narration", "particulars/remarks", "desc", "transaction particulars", "purpose", "comments", "notes"],
+                "reference_number": ["reference number", "ref no", "ref number", "reference no", "reference", "cheque no", "cheque number", "chq no", "chq number", "instrument no", "instrument number", "transaction id", "txn id", "transaction reference", "transaction ref no", "utr", "utr no", "utr number", "rrn", "rrn number", "cheque/ref no", "cheque/ref number", "doc no", "document number", "voucher no", "voucher number", "receipt no", "receipt number", "transaction reference number"],
+                "debit": ["debit", "debit amount", "debit amt", "withdrawal", "withdrawal amount", "withdrawal amt", "dr", "dr amount", "amount debited", "amount withdrawn", "paid out", "debit (dr)", "debit(dr)", "outflow", "money out", "payment", "debits"],
+                "credit": ["credit", "credit amount", "credit amt", "deposit", "deposit amount", "deposit amt", "cr", "cr amount", "amount credited", "amount deposited", "paid in", "credit (cr)", "credit(cr)", "inflow", "money in", "receipt", "credits"]
+            },
+            "critical_fields": ["date", "narration"],
+            "require_any": [
+                ["debit", "credit"]
+            ]
+        };
+
+        class SchemaApp {
+            constructor() {
+                this.data = SchemaApp.emptyData();
+                this.init();
+            }
+
+            static emptyData() {
+                return { output_schema: [], synonyms: {}, critical_fields: [], require_any: [] };
+            }
+
+            static normalize(obj) {
+                obj = obj || {};
+                return {
+                    output_schema: Array.isArray(obj.output_schema) ? obj.output_schema : [],
+                    synonyms: (obj.synonyms && typeof obj.synonyms === 'object' && !Array.isArray(obj.synonyms)) ? obj.synonyms : {},
+                    critical_fields: Array.isArray(obj.critical_fields) ? obj.critical_fields : [],
+                    require_any: Array.isArray(obj.require_any) ? obj.require_any : [],
+                };
+            }
+
+            init() {
+                this.renderFields();
+                this.renderRequireAny();
+                this.updatePreview();
+            }
+
+            // --- Core Logic ---
+
+            getJSON() {
+                return this.data;
+            }
+
+            updatePreview() {
+                const json = JSON.stringify(this.data, null, 2);
+                document.getElementById('json-preview').textContent = json;
+                document.getElementById('char-count').textContent = `${json.length} chars`;
+            }
+
+            showToast(msg) {
+                const toast = document.getElementById('toast');
+                document.getElementById('toast-message').textContent = msg;
+                toast.classList.remove('translate-y-20', 'opacity-0');
+                setTimeout(() => {
+                    toast.classList.add('translate-y-20', 'opacity-0');
+                }, 3000);
+            }
+
+            loadSample() {
+                if (this.data.output_schema.length && !confirm("Load sample schema? This replaces the current schema.")) return;
+                this.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+                this.init();
+                this.showToast("Sample schema loaded");
+            }
+
+            importFromFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        this.data = SchemaApp.normalize(JSON.parse(e.target.result));
+                        this.init();
+                        this.showToast(`Imported ${file.name}`);
+                    } catch (err) {
+                        this.showToast("Could not import — not valid JSON");
+                    }
+                };
+                reader.readAsText(file);
+                event.target.value = '';
+            }
+
+            exportToFile() {
+                const json = JSON.stringify(this.data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'schema.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                this.showToast("schema.json exported");
+            }
+
+            copyToClipboard() {
+                navigator.clipboard.writeText(JSON.stringify(this.data, null, 2)).then(() => {
+                    this.showToast("JSON copied to clipboard");
+                });
+            }
+
+            // --- Fields (schema + synonyms + critical, unified) ---
+
+            renderFields() {
+                const container = document.getElementById('fields-container');
+                const empty = document.getElementById('empty-state-schema');
+                const footer = document.getElementById('add-field-footer');
+                container.innerHTML = '';
+
+                if (this.data.output_schema.length === 0) {
+                    empty.classList.remove('hidden');
+                    container.classList.add('hidden');
+                    footer.classList.add('hidden');
+                    return;
+                }
+                empty.classList.add('hidden');
+                container.classList.remove('hidden');
+                footer.classList.remove('hidden');
+
+                this.data.output_schema.forEach((field, index) => {
+                    const name = field.field;
+                    if (!this.data.synonyms[name]) this.data.synonyms[name] = [];
+                    const syns = this.data.synonyms[name];
+                    const isCritical = this.data.critical_fields.includes(name);
+
+                    const synTags = syns.map((syn, i) => `
+                        <span class="inline-flex items-center bg-white border border-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-md mr-1.5 mb-1.5">
+                            ${syn}
+                            <button onclick="app.removeSynonym('${name}', ${i})" class="ml-1.5 text-slate-300 hover:text-brand focus:outline-none">
+                                <i class="fa-solid fa-xmark text-[10px]"></i>
+                            </button>
+                        </span>`).join('');
+
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-50 rounded-lg border border-slate-200 p-3.5";
+                    card.innerHTML = `
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs text-slate-300 tabular-nums w-4 text-center shrink-0">${index + 1}</span>
+                            <input type="text" value="${field.field}" placeholder="field_id"
+                                onchange="app.updateField(${index}, 'field', this.value)"
+                                class="flex-1 min-w-[140px] bg-white border border-slate-300 rounded-md px-2.5 py-1.5 text-[13px] font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 transition-colors">
+                            <input type="text" value="${field.header}" placeholder="Header"
+                                onchange="app.updateField(${index}, 'header', this.value)"
+                                class="flex-1 min-w-[140px] bg-white border border-slate-300 rounded-md px-2.5 py-1.5 text-[13px] text-slate-600 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 transition-colors">
+                            <select onchange="app.updateField(${index}, 'type', this.value)"
+                                class="w-28 shrink-0 bg-white border border-slate-300 rounded-md px-2 py-1.5 text-[13px] text-slate-600 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 cursor-pointer">
+                                <option value="string" ${field.type === 'string' ? 'selected' : ''}>string</option>
+                                <option value="date" ${field.type === 'date' ? 'selected' : ''}>date</option>
+                                <option value="currency" ${field.type === 'currency' ? 'selected' : ''}>currency</option>
+                                <option value="number" ${field.type === 'number' ? 'selected' : ''}>number</option>
+                                <option value="boolean" ${field.type === 'boolean' ? 'selected' : ''}>boolean</option>
+                            </select>
+                            <button onclick="app.toggleCritical('${name}')" title="Critical: must be present in the output"
+                                class="shrink-0 border text-[11px] font-medium px-2 py-1.5 rounded-md transition-colors ${isCritical ? 'bg-brand-tint text-brand border-brand/30' : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'}">
+                                <i class="fa-${isCritical ? 'solid' : 'regular'} fa-star text-[10px] mr-1"></i>Critical
+                            </button>
+                            <button onclick="app.removeField(${index})" title="Remove field"
+                                class="shrink-0 text-slate-300 hover:text-brand transition-colors p-1.5 rounded">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                        <textarea onchange="app.updateField(${index}, 'description', this.value)"
+                            placeholder="Description — what this field means and how to map it"
+                            class="w-full mt-2 bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-[13px] text-slate-500 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 transition-colors resize-none overflow-hidden"
+                            oninput="this.style.height=''; this.style.height=this.scrollHeight+'px'">${field.description || ''}</textarea>
+                        <div class="mt-2.5">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Synonyms</span>
+                                <span class="text-[11px] text-slate-400 code-font">${syns.length}</span>
+                            </div>
+                            <div class="flex flex-wrap">${synTags}</div>
+                            <div class="flex gap-2 mt-0.5">
+                                <input type="text" id="synonym-input-${name}" placeholder="Add synonym, press Enter..."
+                                    class="flex-1 bg-white border border-slate-300 text-slate-700 text-[13px] rounded-md focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 px-2.5 py-1.5"
+                                    onkeypress="if(event.key==='Enter') app.addSynonym('${name}')">
+                                <button onclick="app.addSynonym('${name}')"
+                                    class="bg-white border border-slate-300 hover:bg-slate-100 hover:text-brand text-slate-600 rounded-md text-[13px] px-3 py-1.5 transition-colors">
+                                    <i class="fa-solid fa-plus text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+
+                // Auto-size description textareas to fit their content
+                container.querySelectorAll('textarea').forEach(ta => {
+                    ta.style.height = '';
+                    ta.style.height = ta.scrollHeight + 'px';
+                });
+            }
+
+            addField() {
+                this.data.output_schema.push({ field: "new_field", header: "New Field", type: "string", description: "" });
+                this.renderFields();
+                this.renderRequireAny();
+                this.updatePreview();
+                // Focus the new field's id for immediate typing
+                const container = document.getElementById('fields-container');
+                const last = container.lastElementChild;
+                if (last) {
+                    last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    const input = last.querySelector('input');
+                    if (input) { input.focus(); input.select(); }
+                }
+            }
+
+            removeField(index) {
+                const name = this.data.output_schema[index].field;
+                this.data.output_schema.splice(index, 1);
+                delete this.data.synonyms[name];
+                this.data.critical_fields = this.data.critical_fields.filter(f => f !== name);
+                this.data.require_any = this.data.require_any.map(g => g.filter(f => f !== name)).filter(g => g.length > 0);
+                this.renderFields();
+                this.renderRequireAny();
+                this.updatePreview();
+            }
+
+            updateField(index, key, value) {
+                const oldName = this.data.output_schema[index].field;
+                this.data.output_schema[index][key] = value;
+
+                if (key === 'field' && oldName !== value) {
+                    if (this.data.synonyms[oldName]) {
+                        this.data.synonyms[value] = this.data.synonyms[oldName];
+                        delete this.data.synonyms[oldName];
+                    }
+                    this.data.critical_fields = this.data.critical_fields.map(f => f === oldName ? value : f);
+                    this.data.require_any = this.data.require_any.map(g => g.map(f => f === oldName ? value : f));
+                    this.renderFields();
+                    this.renderRequireAny();
+                }
+                this.updatePreview();
+            }
+
+            toggleCritical(field) {
+                const i = this.data.critical_fields.indexOf(field);
+                if (i === -1) this.data.critical_fields.push(field);
+                else this.data.critical_fields.splice(i, 1);
+                this.renderFields();
+                this.updatePreview();
+            }
+
+            // --- Synonyms ---
+
+            addSynonym(field) {
+                const input = document.getElementById(`synonym-input-${field}`);
+                if (!input) return;
+                const value = input.value.trim().toLowerCase();
+                if (!value) return;
+                if (!this.data.synonyms[field]) this.data.synonyms[field] = [];
+                if (this.data.synonyms[field].includes(value)) {
+                    this.showToast("Synonym already exists");
+                    return;
+                }
+                this.data.synonyms[field].push(value);
+                this.renderFields();
+                this.updatePreview();
+                // Refocus the same input for rapid entry
+                const again = document.getElementById(`synonym-input-${field}`);
+                if (again) again.focus();
+            }
+
+            removeSynonym(field, index) {
+                this.data.synonyms[field].splice(index, 1);
+                this.renderFields();
+                this.updatePreview();
+            }
+
+            // --- Require Any ---
+
+            renderRequireAny() {
+                const container = document.getElementById('require-any-container');
+                container.innerHTML = '';
+
+                const currentFields = this.data.output_schema.map(f => f.field);
+
+                if (this.data.require_any.length === 0) {
+                    container.innerHTML = '<p class="text-xs text-slate-400">No groups yet. Add one to require at least one of a set of fields.</p>';
+                    return;
+                }
+
+                this.data.require_any.forEach((group, groupIndex) => {
+                    const groupDiv = document.createElement('div');
+                    groupDiv.className = "bg-slate-50 border border-slate-200 rounded-lg p-3 relative group";
+
+                    let tagsHtml = group.map((field, i) => {
+                        if (!currentFields.includes(field)) return '';
+                        return `
+                        <span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md border border-slate-200 mr-1.5 mb-1.5">
+                            ${field}
+                            <button onclick="app.removeRequireAnyField(${groupIndex}, ${i})" class="ml-1.5 text-slate-400 hover:text-brand">
+                                <i class="fa-solid fa-xmark text-[10px]"></i>
+                            </button>
+                        </span>
+                    `}).join('');
+
+                    let availableFields = currentFields.filter(f => !group.includes(f));
+                    let optionsHtml = availableFields.map(f => `<option value="${f}">${f}</option>`).join('');
+
+                    groupDiv.innerHTML = `
+                        <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onclick="app.removeRequireAnyGroup(${groupIndex})" class="text-slate-400 hover:text-brand p-1">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                        <div class="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">Group ${groupIndex + 1}</div>
+                        <div class="flex flex-wrap mb-1.5 min-h-[1.75rem]">
+                            ${tagsHtml}
+                        </div>
+                        <div class="flex gap-2 max-w-md">
+                            <select id="require-any-select-${groupIndex}" class="flex-1 bg-white border border-slate-300 text-slate-700 text-[13px] rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 block px-2.5 py-1.5">
+                                <option value="">Add field...</option>
+                                ${optionsHtml}
+                            </select>
+                            <button onclick="app.addRequireAnyField(${groupIndex})" class="bg-white border border-slate-300 hover:bg-slate-50 hover:text-brand text-slate-600 text-[13px] px-3 py-1.5 rounded-lg transition-colors">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(groupDiv);
+                });
+            }
+
+            addRequireAnyGroup() {
+                this.data.require_any.push([]);
+                this.renderRequireAny();
+                this.updatePreview();
+            }
+
+            removeRequireAnyGroup(index) {
+                this.data.require_any.splice(index, 1);
+                this.renderRequireAny();
+                this.updatePreview();
+            }
+
+            addRequireAnyField(groupIndex) {
+                const select = document.getElementById(`require-any-select-${groupIndex}`);
+                const value = select.value;
+                if (value) {
+                    this.data.require_any[groupIndex].push(value);
+                    this.renderRequireAny();
+                    this.updatePreview();
+                }
+            }
+
+            removeRequireAnyField(groupIndex, fieldIndex) {
+                this.data.require_any[groupIndex].splice(fieldIndex, 1);
+                if (this.data.require_any[groupIndex].length === 0) {
+                    this.data.require_any.splice(groupIndex, 1);
+                }
+                this.renderRequireAny();
+                this.updatePreview();
+            }
+        }
+
+        // Initialize App
+        const app = new SchemaApp();
+
+    </script>
+</body>
+</html>

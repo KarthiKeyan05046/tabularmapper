@@ -13,7 +13,7 @@ Nothing yet.
 
 ### Added
 - **Config-builder web page.** `GET /mapper/config` serves a self-contained
-  HTML page (`tabularmapper/web/index.html`) for designing an output schema —
+  HTML page (`tabularmapper/static/index.html`) for designing an output schema —
   fields, types, synonyms, descriptions, `critical_fields`/`require_any`/
   `reconcile` — with a live `config.json` preview plus copy/download. Bundled in
   the wheel via package-data, so it works from a pip install, not just a checkout.

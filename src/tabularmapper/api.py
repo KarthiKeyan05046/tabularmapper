@@ -31,7 +31,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from enum import Enum
-from pathlib import Path
+from importlib.resources import as_file, files
 from typing import Any, Optional
 
 from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
@@ -140,15 +140,16 @@ async def health() -> dict:
     return {"status": "ok", "ai_enabled": state.matcher is not None}
 
 
-_WEB_DIR = Path(__file__).resolve().parent / "web"
-
-
 async def config_page() -> HTMLResponse:
-    """Serve the self-contained config-builder page (src/tabularmapper/web/index.html)."""
-    index = _WEB_DIR / "index.html"
-    if not index.is_file():
+    """Serve the self-contained config-builder page bundled at
+    tabularmapper/static/index.html. Uses importlib.resources so it works even
+    when the package is imported from a zip/egg, not only an unpacked wheel."""
+    try:
+        resource = files("tabularmapper").joinpath("static", "index.html")
+        with as_file(resource) as path:
+            return HTMLResponse(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ModuleNotFoundError):
         raise HTTPException(status_code=404, detail="config builder page not found")
-    return HTMLResponse(index.read_text(encoding="utf-8"))
 
 
 async def map_statement(
