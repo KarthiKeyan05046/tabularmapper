@@ -32,7 +32,9 @@ from typing import Optional
 
 from .stores import open_store
 
-_DEFAULT_URL = "learned_synonyms.db"
+# In-memory by default — creates NO files. Set BANK_MAPPER_LEARN_STORE (or pass a
+# URL) to a path / redis:// / valkey:// / postgresql:// for persistence.
+_DEFAULT_URL = "memory://"
 _KEY = "learned"
 _DEFAULT_GATED = frozenset({"debit", "credit"})
 

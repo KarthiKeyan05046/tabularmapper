@@ -131,8 +131,8 @@ change the backend by changing the URL, nothing else:
 
 | URL | Backend | Install |
 |---|---|---|
-| `memory://` | in-process (tests, single worker) | — |
-| `sqlite:///cache.db` | SQLite file, concurrency-safe **(default)** | — |
+| `memory://` | in-process, **no files (default)** | — |
+| `sqlite:///cache.db` | SQLite file, concurrency-safe, persistent | — |
 | `redis://` / `rediss://` | Redis | `pip install "bank-statement-mapper[redis]"` |
 | `valkey://` / `valkeys://` | Valkey (Redis fork, e.g. Aiven) | `pip install "bank-statement-mapper[valkey]"` |
 | `postgresql://` | Postgres | `pip install "bank-statement-mapper[postgres]"` |
@@ -148,34 +148,31 @@ res = process_file("statement.xlsx", cache=cache)
 async manager and no `init_cache`/`close_cache`. Selecting the backend is the URL,
 full stop.
 
-### Runtime files (the `.db`, `.db-wal`, `.db-shm` you may see)
+### Persistence is opt-in (no files by default)
 
-With the default SQLite backend, the FastAPI `lifespan` opens the cache and the
-learn store **at startup**, so these appear in the working directory before you
-process anything:
-
-```
-mapping_cache.db        learned_synonyms.db        # the two SQLite databases
-mapping_cache.db-wal    learned_synonyms.db-wal     # SQLite write-ahead log
-mapping_cache.db-shm    learned_synonyms.db-shm     # SQLite shared-memory index
-```
-
-The `-wal` / `-shm` files are normal SQLite Write-Ahead-Logging sidecars (WAL is
-what makes the file concurrency-safe); they're checkpointed away on a clean
-shutdown. All of them are already in `.gitignore`. To control this:
+By default the cache and learn store are **in-memory** — the package writes
+**no files**. They still cache/learn within a running process (lost on restart).
+Turn on persistence only when you want it, by setting a URL:
 
 ```bash
-BANK_MAPPER_CACHE=memory://           # no files at all (state lost on restart)
-BANK_MAPPER_LEARN_STORE=memory://
-# or relocate:
+# default: nothing set -> in-memory, no files
+
+# persist to a file (creates cache.db + WAL sidecars .db-wal / .db-shm):
 BANK_MAPPER_CACHE=sqlite:////var/lib/bankmapper/cache.db
-# or use a server (no local files):
+BANK_MAPPER_LEARN_STORE=sqlite:////var/lib/bankmapper/learned.db
+
+# or a shared server (survives restarts, shared across workers):
+BANK_MAPPER_CACHE=valkeys://user:pw@host:6379
 BANK_MAPPER_LEARN_STORE=valkeys://user:pw@host:6379
 ```
 
-Use `memory://` for stateless / read-only-filesystem deployments; a path or a
-Redis/Valkey/Postgres URL when you want the cache + learned vocabulary to survive
-restarts.
+If you *do* use a SQLite URL, the `.db-wal` / `.db-shm` files that appear next to
+it are normal Write-Ahead-Logging sidecars (that's what makes it concurrency-safe);
+they're checkpointed away on a clean shutdown and are already gitignored.
+
+> In a FastAPI app the `.env` file is **not** auto-loaded (only the CLI does that).
+> Call `load_dotenv()` at startup, or run with `uv run --env-file .env`, or the
+> env vars won't be seen and you'll get the in-memory default.
 
 ## Use with FastAPI
 
@@ -372,11 +369,11 @@ Submodules: `bank_statement_mapper.ai_matcher` (`OpenAICompatibleMatcher`),
   the built-in default (which has `balance`) is active. Check the key is exactly
   `output_schema` and that `configure()`/`BANK_MAPPER_CONFIG` actually ran; a bad
   config logs a warning and falls back to defaults.
-- **The package created `.db` / `.db-wal` / `.db-shm` files on startup.** Those
-  are the SQLite cache + learn store (opened eagerly by the FastAPI `lifespan`);
-  the `-wal`/`-shm` are normal WAL sidecars. They're gitignored. Set
-  `BANK_MAPPER_CACHE=memory://` and `BANK_MAPPER_LEARN_STORE=memory://` for no
-  files, or point them at a path / Redis / Valkey. See [Runtime files](#runtime-files-the-db-db-wal-db-shm-you-may-see).
+- **`.db` files appear even though I set `memory://` in `.env`.** In a FastAPI
+  app the `.env` isn't auto-loaded, so your env vars aren't seen and it uses the
+  default. The default is now **in-memory (no files)** — but if you're on an
+  older build it defaulted to SQLite. Either upgrade, `load_dotenv()` at startup,
+  or run with `uv run --env-file .env`. See [Persistence is opt-in](#persistence-is-opt-in-no-files-by-default).
 - **AI never fires.** It's off unless `OPENAI_API_KEY` is set and you pass a
   `table_matcher` (or use the router, which builds one when the key is present).
 - **`ModuleNotFoundError: redis`** (or valkey/psycopg). You selected that backend

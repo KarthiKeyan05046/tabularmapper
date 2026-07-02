@@ -24,9 +24,10 @@ from typing import Optional
 from .bank_mapper import ColumnMap
 from .stores import open_store
 
-# SQLite by default — a file, no server to run, but concurrency-safe (unlike the
-# old JSON file, which raced under multiple workers).
-_DEFAULT_URL = "mapping_cache.db"
+# In-memory by default — creates NO files. Persistence is opt-in: set
+# BANK_MAPPER_CACHE (or pass a URL) to a path / redis:// / valkey:// /
+# postgresql://. In-memory still caches within a process (lost on restart).
+_DEFAULT_URL = "memory://"
 
 
 def _fingerprint(header: list, namespace: str = "") -> str:

@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   built-in bank preset still requires `date`.)
 
 ### Changed
+- **The cache and learn store now default to in-memory and create no files.**
+  Previously they defaulted to SQLite and wrote `mapping_cache.db` /
+  `learned_synonyms.db` (+ WAL sidecars) into the working directory at startup.
+  Persistence is now opt-in: set `BANK_MAPPER_CACHE` / `BANK_MAPPER_LEARN_STORE`
+  to a SQLite path or a redis/valkey/postgres URL.
 - Column mapping only assigns fields declared in your `output_schema` (plus any
   `reconcile`/`amount` fields). A header recognized as a field you didn't declare
   is now reported with `field: null` and `method: "not_in_schema"` instead of
