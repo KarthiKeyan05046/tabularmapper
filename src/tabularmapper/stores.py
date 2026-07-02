@@ -145,7 +145,7 @@ def _redis_proto_client(url: str, prefer: str = "redis"):
         return mod.from_url(u)                  # module-level from_url (both expose it)
     raise ImportError(
         "This cache backend needs the 'valkey' or 'redis' package. Install one "
-        "with:  pip install bank-statement-mapper[valkey]   (or [redis]). Both "
+        "with:  pip install tabularmapper[valkey]   (or [redis]). Both "
         "are optional — the default SQLite backend needs nothing extra."
     ) from last_err
 
@@ -188,7 +188,7 @@ class PostgresStore:
         except ImportError as exc:
             raise ImportError(
                 "The postgres cache backend needs the 'psycopg' package. Install "
-                "it with:  pip install bank-statement-mapper[postgres]. It is "
+                "it with:  pip install tabularmapper[postgres]. It is "
                 "optional — the default SQLite backend needs nothing extra."
             ) from exc
         self._table = table
