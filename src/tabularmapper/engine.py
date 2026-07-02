@@ -1,5 +1,5 @@
 """
-engine.py — Bank Statement -> Standard Schema Mapper (engine)
+engine.py — Bank Statement -> Standard Tabular Mapper (engine)
 
 Two-stage, auditable pipeline:
   Stage 1  detect_header_row()   deterministic scoring (NO AI)
@@ -34,7 +34,7 @@ from rapidfuzz import fuzz
 # Active configuration (output template + synonyms + critical fields).
 # Loaded from schema.py — by default the built-in constants (byte-identical to
 # the previous hardcoded values), or from a JSON file / URL / S3 object / dict
-# via env SCHEMA_MAPPER_CONFIG or a call to configure().
+# via env TABULARMAPPER_CONFIG or a call to configure().
 #
 # These module globals are kept for backward compatibility; everything reads
 # them, and configure() swaps them atomically.

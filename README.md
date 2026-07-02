@@ -1,20 +1,25 @@
-# Bank Statement Mapper
+# Tabular Mapper
 
-Turn a bank statement `.xlsx` from **any bank, in any layout** into a clean, fixed
-schema — reliably, and with anything ambiguous flagged for review instead of
-silently guessed.
+Map **any spreadsheet (`.xlsx`), in any layout**, to a schema *you* define — the
+header row is found automatically, columns are matched to your fields, and
+anything ambiguous is flagged for review instead of silently guessed.
 
-The common path is **100% deterministic** (header detection + a synonym/fuzzy
-matcher). An LLM is optional, off by default, and only ever sees column *headers*
-+ column *structure* — never your transaction data.
+The engine is **domain-agnostic** — invoices, product catalogs, payroll, bank
+statements. "Bank statements" is just a built-in preset (`bank_preset()`). The
+common path is **100% deterministic** (header detection + synonym/fuzzy matching);
+an LLM is optional, off by default, and only ever sees column *headers* + column
+*structure* — never your cell data.
 
 ```python
-from bank_statement_mapper import process_file
+from tabularmapper import process_file, configure, config_from_dict
 
-res = process_file("statement.xlsx")
-res.records         # -> [{'date': '2025-04-03', 'description': 'SALARY',
-                    #      'reference': 'REF1', 'debit': None, 'credit': 45000.0,
-                    #      'balance': None}, ...]  ready for JSON / a DB
+configure(config_from_dict({
+    "output_schema": [{"field": "sku", "header": "SKU", "type": "text"},
+                      {"field": "price", "header": "Unit Price", "type": "number"}],
+    "synonyms": {"sku": ["sku", "item code"], "price": ["unit price", "rate"]},
+}))
+res = process_file("catalog.xlsx")
+res.records         # -> [{'sku': 'A-100', 'price': 12.5}, ...]  ready for JSON / a DB
 res.needs_review    # -> False  (True if a column was uncertain)
 ```
 
@@ -29,43 +34,46 @@ res.needs_review    # -> False  (True if a column was uncertain)
 ## Install
 
 ```bash
-pip install bank-statement-mapper                 # core — no DB driver, no AI SDK
-pip install "bank-statement-mapper[api]"          # + FastAPI router
-pip install "bank-statement-mapper[valkey]"       # + Valkey  (also: redis, postgres, dotenv)
+pip install tabularmapper                 # core — no DB driver, no AI SDK
+pip install "tabularmapper[api]"          # + FastAPI router
+pip install "tabularmapper[valkey]"       # + Valkey  (also: redis, postgres, dotenv)
 ```
 
 The core install pulls only `openpyxl`, `rapidfuzz`, `python-dateutil`. Everything
 else (Redis/Valkey/Postgres drivers, FastAPI, dotenv) is an **optional extra** you
-add only if you use it. Import name is `bank_statement_mapper`.
+add only if you use it. Import name is `tabularmapper`.
 
 ## Quickstart
 
 ### 1. As a library
 
 ```python
-from bank_statement_mapper import process_file, process_stream
+from tabularmapper import process_file, process_stream, configure, bank_preset
 
-# from a file path
-res = process_file("statement.xlsx")
-rows = res.records                       # list[dict], one per transaction
+configure(config=bank_preset())          # or a config_from_dict(...) of your own
+res = process_file("file.xlsx")
+rows = res.records                       # list[dict], one per row
 
 # from bytes (e.g. an upload) — parsed in memory, nothing written to disk
-res = process_stream(open("statement.xlsx", "rb").read())
+res = process_stream(open("file.xlsx", "rb").read())
 ```
+
+There is **no default schema** — call `configure(...)` with your own config or a
+preset first, otherwise nothing is mapped ([Custom schema](#custom-output-schema)).
 
 ### 2. From the command line
 
 ```bash
-bank-mapper statement.xlsx                    # writes statement.standardized.xlsx
-bank-mapper statement.xlsx --format json      # prints JSON to stdout
-bank-mapper statement.xlsx --format records   # prints the mapping + rows
+tabularmapper file.xlsx --config schema.json   # your schema
+tabularmapper file.xlsx --preset bank          # built-in bank layout
+tabularmapper file.xlsx --preset bank --format json    # JSON to stdout
 ```
 
 ### 3. In a FastAPI app
 
 ```python
 from fastapi import FastAPI
-from bank_statement_mapper.bank_mapper_api import router, lifespan
+from tabularmapper.api import router, lifespan
 
 app = FastAPI(lifespan=lifespan)              # lifespan wires cache + config + AI for you
 app.include_router(router)                    # -> POST /mapper/map, GET /mapper/health
@@ -91,7 +99,7 @@ That's the whole integration. **Do not add your own cache manager** — the
 
 | Attribute | Type | What it is |
 |---|---|---|
-| `records` | `list[dict]` | the transactions — keys are your schema fields. **Use this for a DB.** |
+| `records` | `list[dict]` | the mapped rows — keys are your schema fields. **Use this for a DB.** |
 | `needs_review` | `bool` | `True` if any critical column was missing or low-confidence |
 | `review_reasons` | `list[str]` | human-readable reasons when `needs_review` |
 | `column_maps` | `list[ColumnMap]` | per-column: `raw_header`, `field`, `confidence`, `method` |
@@ -113,16 +121,16 @@ All are optional; sensible defaults apply.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BANK_MAPPER_CACHE` | `memory://` (no files) | where header→field mappings are cached ([backends](#storage-backends)) |
-| `BANK_MAPPER_LEARN_STORE` | `memory://` (no files) | where self-learned header synonyms live |
-| `BANK_MAPPER_CONFIG` | built-in | output template + synonyms JSON (file / `https://` / `s3://`) |
-| `BANK_MAPPER_ROUTE_PREFIX` | `/mapper` | FastAPI router path prefix |
+| `TABULARMAPPER_CACHE` | `memory://` (no files) | where header→field mappings are cached ([backends](#storage-backends)) |
+| `TABULARMAPPER_LEARN_STORE` | `memory://` (no files) | where self-learned header synonyms live |
+| `TABULARMAPPER_CONFIG` | *(none — required)* | output template + synonyms JSON (file / `https://` / `s3://`) |
+| `TABULARMAPPER_ROUTE_PREFIX` | `/mapper` | FastAPI router path prefix |
 | `OPENAI_API_KEY` | *(unset → AI off)* | enables the AI column matcher |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint |
 | `OPENAI_MODEL` | `gpt-4o-mini` | model name |
 
 ```bash
-export BANK_MAPPER_CACHE="valkeys://default:PASSWORD@host:6379"
+export TABULARMAPPER_CACHE="valkeys://default:PASSWORD@host:6379"
 ```
 
 ## Storage backends
@@ -134,12 +142,12 @@ change the backend by changing the URL, nothing else:
 |---|---|---|
 | `memory://` | in-process, **no files (default)** | — |
 | `sqlite:///cache.db` | SQLite file, concurrency-safe, persistent | — |
-| `redis://` / `rediss://` | Redis | `pip install "bank-statement-mapper[redis]"` |
-| `valkey://` / `valkeys://` | Valkey (Redis fork, e.g. Aiven) | `pip install "bank-statement-mapper[valkey]"` |
-| `postgresql://` | Postgres | `pip install "bank-statement-mapper[postgres]"` |
+| `redis://` / `rediss://` | Redis | `pip install "tabularmapper[redis]"` |
+| `valkey://` / `valkeys://` | Valkey (Redis fork, e.g. Aiven) | `pip install "tabularmapper[valkey]"` |
+| `postgresql://` | Postgres | `pip install "tabularmapper[postgres]"` |
 
 ```python
-from bank_statement_mapper import MappingCache, process_file
+from tabularmapper import MappingCache, process_file
 
 cache = MappingCache("valkeys://default:pw@host:6379")   # or MappingCache() to read the env var
 res = process_file("statement.xlsx", cache=cache)
@@ -159,12 +167,12 @@ Turn on persistence only when you want it, by setting a URL:
 # default: nothing set -> in-memory, no files
 
 # persist to a file (creates cache.db + WAL sidecars .db-wal / .db-shm):
-BANK_MAPPER_CACHE=sqlite:////var/lib/bankmapper/cache.db
-BANK_MAPPER_LEARN_STORE=sqlite:////var/lib/bankmapper/learned.db
+TABULARMAPPER_CACHE=sqlite:////var/lib/tabularmapper/cache.db
+TABULARMAPPER_LEARN_STORE=sqlite:////var/lib/tabularmapper/learned.db
 
 # or a shared server (survives restarts, shared across workers):
-BANK_MAPPER_CACHE=valkeys://user:pw@host:6379
-BANK_MAPPER_LEARN_STORE=valkeys://user:pw@host:6379
+TABULARMAPPER_CACHE=valkeys://user:pw@host:6379
+TABULARMAPPER_LEARN_STORE=valkeys://user:pw@host:6379
 ```
 
 If you *do* use a SQLite URL, the `.db-wal` / `.db-shm` files that appear next to
@@ -183,14 +191,14 @@ The package ships a ready router. Two ways to use it.
 
 ```python
 from fastapi import FastAPI
-from bank_statement_mapper.bank_mapper_api import router, lifespan
+from tabularmapper.api import router, lifespan
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
 ```
 
-At startup the `lifespan` reads `BANK_MAPPER_CONFIG`, builds `MappingCache()` from
-`BANK_MAPPER_CACHE`, builds the learn store, and enables the AI matcher if
+At startup the `lifespan` reads `TABULARMAPPER_CONFIG`, builds `MappingCache()` from
+`TABULARMAPPER_CACHE`, builds the learn store, and enables the AI matcher if
 `OPENAI_API_KEY` is set. **Configure it entirely with env vars.**
 
 ### Control the cache yourself — write your own lifespan
@@ -199,13 +207,13 @@ At startup the `lifespan` reads `BANK_MAPPER_CONFIG`, builds `MappingCache()` fr
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-import bank_statement_mapper.bank_mapper as bank_mapper
-from bank_statement_mapper.bank_mapper_api import router, state, build_matcher
-from bank_statement_mapper import MappingCache, LearnStore, apply_learned
+import tabularmapper.engine as engine
+from tabularmapper.api import router, state, build_matcher
+from tabularmapper import MappingCache, LearnStore, apply_learned
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    bank_mapper.configure(os.getenv("BANK_MAPPER_CONFIG"))
+    engine.configure(os.getenv("TABULARMAPPER_CONFIG"))
     state.cache = MappingCache("valkeys://default:pw@host:6379")   # your URL
     state.matcher = build_matcher()          # None if no OPENAI_API_KEY
     state.learn = LearnStore()
@@ -233,10 +241,10 @@ blocking work in a threadpool. Store the original file to S3 in your own endpoin
 if you need it — the mapper stays out of AWS.
 
 The `/mapper` prefix is configurable (this is a general table→schema mapper, not
-just banks): set `BANK_MAPPER_ROUTE_PREFIX`, or build the router yourself:
+just banks): set `TABULARMAPPER_ROUTE_PREFIX`, or build the router yourself:
 
 ```python
-from bank_statement_mapper.bank_mapper_api import make_router, lifespan
+from tabularmapper.api import make_router, lifespan
 app.include_router(make_router("/catalog"))     # -> POST /catalog/map, ...
 ```
 
@@ -258,7 +266,7 @@ db.insert_many(res.records)                 # to your database
 s3.put_object(Bucket=b, Key=k, Body=res.output.bytes)   # .xlsx to S3, one pass
 ```
 
-CSV: `from bank_statement_mapper import records_to_csv_bytes`.
+CSV: `from tabularmapper import records_to_csv_bytes`.
 
 ## AI column matcher (optional)
 
@@ -268,7 +276,7 @@ contains only column headers + structural metadata (types, fill rate, which
 columns are mutually exclusive) — **never a transaction value**.
 
 ```python
-from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
+from tabularmapper.ai_matcher import OpenAICompatibleMatcher
 res = process_file("new_bank.xlsx", table_matcher=OpenAICompatibleMatcher())
 ```
 
@@ -283,10 +291,10 @@ held for a one-time human approval (a wrong direction is the costly error);
 everything else auto-applies.
 
 ```python
-from bank_statement_mapper import LearnStore, apply_learned, process_file
-from bank_statement_mapper.ai_matcher import OpenAICompatibleMatcher
+from tabularmapper import LearnStore, apply_learned, process_file
+from tabularmapper.ai_matcher import OpenAICompatibleMatcher
 
-store = LearnStore()                         # BANK_MAPPER_LEARN_STORE or sqlite
+store = LearnStore()                         # TABULARMAPPER_LEARN_STORE or sqlite
 apply_learned(store)                         # activate at startup
 res = process_file("stmt.xlsx", table_matcher=OpenAICompatibleMatcher(), learn_store=store)
 
@@ -295,11 +303,11 @@ store.approve("outgoing", "debit")           # now an exact match everywhere
 ```
 
 Bootstrap from an archive in one pass:
-`bank-mapper --harvest ./past_statements --learn sqlite:///learned.db`.
+`tabularmapper --harvest ./past_statements --learn sqlite:///learned.db`.
 
 ## Custom output schema
 
-The output columns and synonyms are data, not code. Point `BANK_MAPPER_CONFIG` at
+The output columns and synonyms are data, not code. Point `TABULARMAPPER_CONFIG` at
 a JSON file (or `https://` / `s3://` URL):
 
 ```json
@@ -314,34 +322,30 @@ a JSON file (or `https://` / `s3://` URL):
 }
 ```
 
-`type` is `date` | `number` (alias `money`) | `text`. Rename a header, reorder,
-drop a column, or add a brand-new one — all config, no code. In a library (not
-the CLI/API) call `configure("config.json")` before processing.
+`type` is `date` | `number`/`money`/`currency`/`integer`/`float` | `text`/`string`.
+Rename a header, reorder, drop a column, or add a brand-new one — all config, no
+code. In a library call `configure("config.json")` (or `configure(config_from_dict(...))`)
+before processing. **There is no default schema** — `synonyms` are exactly what
+you declare (nothing is merged in).
 
-### Beyond banks — this is a general table→schema mapper
-
-The engine has **no hardcoded field names**. "Bank" behavior is just the default
-config; provide your own and it maps *any* spreadsheet (invoices, product
-catalogs, payroll…). Optional keys, all data-driven (omit them for a plain
-type-based mapping):
+Optional keys, all data-driven (omit them for a plain type-based mapping):
 
 | Key | What it does |
 |---|---|
 | `output_schema[].description` | hint for the AI matcher (falls back to the field name) |
 | `critical_fields` | fields that must be mapped, else `needs_review` |
 | `require_any` | `[[a, b]]` — each group needs ≥1 mapped field, else `needs_review` |
-| `reconcile` | `{"signed": s, "negative": n, "positive": p}` — split one signed column into two directional ones (the bank debit/credit rule) |
+| `reconcile` | `{"signed": s, "negative": n, "positive": p}` — split one signed column into two directional ones (e.g. debit/credit) |
 | `row_keep_if_any` | a row is a record only if ≥1 of these has a value (default: any non-empty) |
 | `continuation_field` | a row with only this field folds into the row above (multi-line cells) |
-| `replace_synonyms` | `true` to start from an empty vocabulary instead of extending the defaults |
 
-The full bank preset is in `config.example.json` — copy it as a starting point.
-A minimal non-bank config needs only `output_schema` + `synonyms` +
-`replace_synonyms: true`. See `tests/test_schema.py::test_generic_non_bank_mapper`.
+The ready-made **bank preset** is in `config.example.json` (also `bank_preset()`
+in code) — copy it as a starting point. A minimal config needs only
+`output_schema` + `synonyms`. See `tests/test_schema.py::test_generic_custom_config`.
 
 ## API reference
 
-Top-level (`from bank_statement_mapper import ...`):
+Top-level (`from tabularmapper import ...`):
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -357,14 +361,14 @@ Top-level (`from bank_statement_mapper import ...`):
 | `ProcessResult`, `ColumnMap`, `OutputResult` | class | result types |
 | `records_to_csv_bytes(records)` | fn | CSV serializer |
 
-Submodules: `bank_statement_mapper.ai_matcher` (`OpenAICompatibleMatcher`),
-`bank_statement_mapper.bank_mapper_api` (`router`, `lifespan`, `app`, `state`,
-`build_matcher`), `bank_statement_mapper.llm_fallback` (`HashingEmbeddingFallback`).
+Submodules: `tabularmapper.ai_matcher` (`OpenAICompatibleMatcher`),
+`tabularmapper.api` (`router`, `lifespan`, `app`, `state`,
+`build_matcher`), `tabularmapper.llm_fallback` (`HashingEmbeddingFallback`).
 
 ## Gotchas & FAQ
 
 - **"No module named `bank_mapper_cache`" / `MappingCacheManager` not found.**
-  Those don't exist. The cache is `from bank_statement_mapper import MappingCache`,
+  Those don't exist. The cache is `from tabularmapper import MappingCache`,
   and it's a plain sync object. The FastAPI `lifespan` already creates it — you
   don't need a manager or a startup hook.
 - **The cache is synchronous.** No `await`, no `init_cache()`/`close_cache()`.
@@ -372,11 +376,11 @@ Submodules: `bank_statement_mapper.ai_matcher` (`OpenAICompatibleMatcher`),
 - **Don't mix `lifespan=` with `@app.on_event(...)`.** Use the `lifespan` (the
   `on_event` API is deprecated in FastAPI, and the lifespan already sets up the cache).
 - **Setting an env var after `import` has no effect on config.** Set
-  `BANK_MAPPER_CONFIG` before startup, or call `configure(...)` explicitly. The
+  `TABULARMAPPER_CONFIG` before startup, or call `configure(...)` explicitly. The
   router/CLI do this for you.
 - **I get `balance` even though my schema drops it.** Your config didn't load —
   the built-in default (which has `balance`) is active. Check the key is exactly
-  `output_schema` and that `configure()`/`BANK_MAPPER_CONFIG` actually ran; a bad
+  `output_schema` and that `configure()`/`TABULARMAPPER_CONFIG` actually ran; a bad
   config logs a warning and falls back to defaults.
 - **`.db` files appear even though I set `memory://` in `.env`.** In a FastAPI
   app the `.env` isn't auto-loaded, so your env vars aren't seen and it uses the
@@ -386,17 +390,17 @@ Submodules: `bank_statement_mapper.ai_matcher` (`OpenAICompatibleMatcher`),
 - **AI never fires.** It's off unless `OPENAI_API_KEY` is set and you pass a
   `table_matcher` (or use the router, which builds one when the key is present).
 - **`ModuleNotFoundError: redis`** (or valkey/psycopg). You selected that backend
-  but didn't install its extra: `pip install "bank-statement-mapper[redis]"`. The
+  but didn't install its extra: `pip install "tabularmapper[redis]"`. The
   default SQLite backend needs nothing.
 - **Multiple workers.** SQLite is safe for one host; for several containers point
-  `BANK_MAPPER_CACHE`/`BANK_MAPPER_LEARN_STORE` at `redis://` / `valkey://` /
+  `TABULARMAPPER_CACHE`/`TABULARMAPPER_LEARN_STORE` at `redis://` / `valkey://` /
   `postgresql://` so they share state.
 
 ## Development
 
 ```bash
-git clone https://github.com/KarthiKeyan05046/bank-statement-mapper
-cd bank-statement-mapper
+git clone https://github.com/KarthiKeyan05046/tabularmapper
+cd tabularmapper
 pip install -e ".[api]" pytest
 pytest -q                     # 59 tests
 python make_fixtures.py       # regenerate test_statements/

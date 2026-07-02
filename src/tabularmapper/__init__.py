@@ -1,5 +1,5 @@
 """
-schema_mapper — map any spreadsheet (.xlsx) to a schema you define.
+tabularmapper — map any spreadsheet (.xlsx) to a schema you define.
 
 Two-stage, auditable pipeline: deterministic header detection + synonym/fuzzy
 column mapping, with an optional AI table matcher and a self-learning vocabulary.
@@ -7,18 +7,18 @@ The engine is domain-agnostic; "bank statements" is just a built-in preset.
 
 Quick start:
 
-    from schema_mapper import process_file, configure, config_from_dict
+    from tabularmapper import process_file, configure, config_from_dict
     configure(config_from_dict({"output_schema": [...], "synonyms": {...}}))
     res = process_file("file.xlsx")
     print(res.records)          # list[dict], ready for JSON / DB
 
     # or the ready-made bank layout:
-    from schema_mapper import bank_preset, configure
+    from tabularmapper import bank_preset, configure
     configure(config=bank_preset())
 
 Heavier pieces are kept as submodules so importing this package stays light:
-    from schema_mapper.ai_matcher import OpenAICompatibleMatcher
-    from schema_mapper.api import router   # needs [api] extra
+    from tabularmapper.ai_matcher import OpenAICompatibleMatcher
+    from tabularmapper.api import router   # needs [api] extra
 """
 
 from .engine import (

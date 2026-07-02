@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "schema-mapper"
+name = "tabularmapper"
 version = "1.0.2"
 description = "Map any spreadsheet (.xlsx) to a schema you define — deterministic column mapping with an optional AI matcher"
 readme = "README.md"
@@ -48,7 +48,7 @@ Repository = "https://github.com/KarthiKeyan05046/bank-statement-mapper"
 Issues = "https://github.com/KarthiKeyan05046/bank-statement-mapper/issues"
 
 [project.scripts]
-schema-mapper = "schema_mapper.cli:main"
+tabularmapper = "tabularmapper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

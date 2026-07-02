@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cli.py — command-line runner for schema-mapper.
+cli.py — command-line runner for tabularmapper.
 
     python cli.py <input.xlsx> [output.xlsx] [options]
 
@@ -14,13 +14,13 @@ Options:
     --fallback {none,hashing}             offline per-column fallback
                                           (default: none -> zero network calls)
     --config PATH                         output template + synonyms JSON
-                                          (file / URL / s3://; or env SCHEMA_MAPPER_CONFIG)
+                                          (file / URL / s3://; or env TABULARMAPPER_CONFIG)
     --cache URL                           cache backend: sqlite:/// | redis:// |
                                           postgresql:// | memory:// (or env
-                                          SCHEMA_MAPPER_CACHE; use env for secrets)
+                                          TABULARMAPPER_CACHE; use env for secrets)
     --no-cache                            disable the mapping cache
     --learn [URL]                         enable self-learning (store URL optional;
-                                          env SCHEMA_MAPPER_LEARN_STORE / sqlite default)
+                                          env TABULARMAPPER_LEARN_STORE / sqlite default)
     --harvest DIR                         seed the learned vocabulary from a folder
                                           of .xlsx statements, then exit
     --threshold N                         fuzzy confidence gate (default 80)
@@ -93,7 +93,7 @@ def _write_output_file(res, out_path: str) -> None:
 
 def main(argv=None) -> int:
     # Auto-load a local .env if python-dotenv is available (optional convenience),
-    # so SCHEMA_MAPPER_CACHE / _CONFIG / _LEARN_STORE / OPENAI_* are picked up
+    # so TABULARMAPPER_CACHE / _CONFIG / _LEARN_STORE / OPENAI_* are picked up
     # without exporting. No-op if the package isn't installed.
     try:
         from dotenv import load_dotenv
@@ -113,15 +113,15 @@ def main(argv=None) -> int:
     ap.add_argument("--model", default=None, help="LLM model (or env OPENAI_MODEL)")
     ap.add_argument("--fallback", choices=["none", "hashing"], default="none")
     ap.add_argument("--config", default=None,
-                    help="config JSON (file / URL / s3://); or env SCHEMA_MAPPER_CONFIG")
+                    help="config JSON (file / URL / s3://); or env TABULARMAPPER_CONFIG")
     ap.add_argument("--cache", default=None,
                     help="cache backend URL: sqlite:///f.db | redis://… | "
-                         "postgresql://… | memory:// (or env SCHEMA_MAPPER_CACHE). "
+                         "postgresql://… | memory:// (or env TABULARMAPPER_CACHE). "
                          "Prefer the env var for URLs containing secrets.")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--learn", nargs="?", const="", default=None,
                     help="enable self-learning; optional store URL "
-                         "(or env SCHEMA_MAPPER_LEARN_STORE / sqlite default)")
+                         "(or env TABULARMAPPER_LEARN_STORE / sqlite default)")
     ap.add_argument("--harvest", default=None, metavar="DIR",
                     help="bootstrap the learned vocabulary from a folder of "
                          ".xlsx statements, then exit")
@@ -130,14 +130,14 @@ def main(argv=None) -> int:
     ap.add_argument("--threshold", type=int, default=80)
     args = ap.parse_args(argv)
 
-    # Load the schema: --preset, then --config / SCHEMA_MAPPER_CONFIG. With none
+    # Load the schema: --preset, then --config / TABULARMAPPER_CONFIG. With none
     # of these, the default is EMPTY and nothing is mapped.
     from .engine import configure, apply_learned
     if args.preset == "bank":
         from .schema import bank_preset
         configure(config=bank_preset())
     else:
-        configure(args.config or os.getenv("SCHEMA_MAPPER_CONFIG"))
+        configure(args.config or os.getenv("TABULARMAPPER_CONFIG"))
 
     # Learning: enabled by --learn or --harvest. `--learn` with no value uses the
     # env/sqlite default; `--learn URL` overrides.
@@ -172,7 +172,7 @@ def main(argv=None) -> int:
 
     fallback = _build_fallback(args.fallback)
     # args.cache is None unless --cache is passed; MappingCache(None) then falls
-    # back to SCHEMA_MAPPER_CACHE or the sqlite default. Never hardcode a secret URL.
+    # back to TABULARMAPPER_CACHE or the sqlite default. Never hardcode a secret URL.
     cache = None if args.no_cache else MappingCache(args.cache)
 
     table_matcher = _maybe_matcher(args) if args.ai else None

@@ -1,5 +1,5 @@
 """
-pytest suite for the bank statement mapper.
+pytest suite for tabularmapper (bank preset fixtures).
 
 Asserts per fixture: correct header index, correct field-per-column, correct
 debit/credit split, correct normalized dates, and the right needs_review value.
@@ -16,11 +16,11 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from schema_mapper.engine import (  # noqa: E402
+from tabularmapper.engine import (  # noqa: E402
     detect_header_row, map_columns, normalize_amount, normalize_date,
     process_file,
 )
-from schema_mapper import engine as _engine, bank_preset  # noqa: E402
+from tabularmapper import engine as _engine, bank_preset  # noqa: E402
 
 FIX = os.path.join(ROOT, "test_statements")
 
@@ -140,7 +140,7 @@ def test_weird_header_needs_review_without_fallback():
 
 
 def test_weird_header_with_hashing_fallback():
-    from schema_mapper.llm_fallback import HashingEmbeddingFallback
+    from tabularmapper.llm_fallback import HashingEmbeddingFallback
     res = process_file(os.path.join(FIX, "05_weird_header.xlsx"),
                        llm_fallback=HashingEmbeddingFallback())
     f = _fields(res)
@@ -174,7 +174,7 @@ def test_no_network_without_fallback(monkeypatch):
 # --------------------------------------------------------------------------
 def test_process_stream_from_bytes_matches_path():
     import io
-    from schema_mapper.engine import process_stream
+    from tabularmapper.engine import process_stream
     p = os.path.join(FIX, "01_junk_split.xlsx")
     with open(p, "rb") as fh:
         raw = fh.read()
@@ -194,7 +194,7 @@ def test_process_stream_from_bytes_matches_path():
 # AI table matcher (mocked transport — NO network in tests)
 # --------------------------------------------------------------------------
 import json as _json  # noqa: E402
-from schema_mapper.ai_matcher import OpenAICompatibleMatcher, profile_columns  # noqa: E402
+from tabularmapper.ai_matcher import OpenAICompatibleMatcher, profile_columns  # noqa: E402
 
 
 def test_profiler_detects_mutual_exclusivity():
@@ -225,7 +225,7 @@ def _fake_ai(mapping: dict):
 
 
 def test_ai_matcher_maps_unknown_headers_and_caches(tmp_path):
-    from schema_mapper.mapping_cache import MappingCache
+    from tabularmapper.mapping_cache import MappingCache
     transport, sent = _fake_ai({0: "date", 1: "description", 2: "reference",
                                 3: "debit", 4: "credit"})
     matcher = OpenAICompatibleMatcher(api_key="x", transport=transport)

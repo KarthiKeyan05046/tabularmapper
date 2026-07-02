@@ -8,10 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Rebranded to a general spreadsheet→schema mapper.** Package renamed
+  `bank-statement-mapper` → **`tabularmapper`** (import `tabularmapper`); modules
+  `bank_mapper.py`→`engine.py`, `bank_mapper_api.py`→`api.py`; env prefix
+  `BANK_MAPPER_`→`TABULARMAPPER_`; CLI command `bank-mapper`→`tabularmapper`.
+- **No built-in default schema.** `default_config()` is now EMPTY — you must
+  provide an `output_schema` + `synonyms` (config file/URL/dict, or `configure()`).
+  The bank layout moved to `bank_preset()` / `config.example.json`; the CLI gains
+  `--preset bank`. Custom configs no longer merge the bank synonyms.
 - **FastAPI router prefix is now `/mapper` (was `/statements`)** and configurable:
-  set `BANK_MAPPER_ROUTE_PREFIX`, or build the router with `make_router("/custom")`.
-  The routes are no longer bank-specific. *Breaking for API clients calling
-  `/statements/*` — update them to `/mapper/*` (or your chosen prefix).*
+  set `TABULARMAPPER_ROUTE_PREFIX`, or build the router with `make_router("/custom")`.
+  *Breaking for API clients calling `/statements/*` — update to `/mapper/*`.*
 
 ## [1.0.2] — 2026-07-02
 
@@ -37,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The cache and learn store now default to in-memory and create no files.**
   Previously they defaulted to SQLite and wrote `mapping_cache.db` /
   `learned_synonyms.db` (+ WAL sidecars) into the working directory at startup.
-  Persistence is now opt-in: set `BANK_MAPPER_CACHE` / `BANK_MAPPER_LEARN_STORE`
+  Persistence is now opt-in: set `TABULARMAPPER_CACHE` / `TABULARMAPPER_LEARN_STORE`
   to a SQLite path or a redis/valkey/postgres URL.
 - Column mapping only assigns fields declared in your `output_schema` (plus any
   `reconcile`/`amount` fields). A header recognized as a field you didn't declare
@@ -51,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Document the runtime SQLite files created at startup — `mapping_cache.db`,
   `learned_synonyms.db`, and the `.db-wal` / `.db-shm` Write-Ahead-Logging
   sidecars — including why they appear and how to control storage via
-  `BANK_MAPPER_CACHE` / `BANK_MAPPER_LEARN_STORE` (`memory://` for no files, a
+  `TABULARMAPPER_CACHE` / `TABULARMAPPER_LEARN_STORE` (`memory://` for no files, a
   filesystem path, or a Redis/Valkey/Postgres URL). Added a matching FAQ entry.
 
 ## [1.0.0] — 2026-07-02
@@ -79,7 +86,7 @@ a human-review gate.
   / `valkeys://` (Aiven-compatible), `postgresql://`. Drivers are optional
   extras, lazy-imported, with a friendly install message.
 - **Loadable config** (`schema.py`): output template + synonyms from a JSON
-  file, `https://` / `s3://` URL, or dict via `BANK_MAPPER_CONFIG` / `configure()`.
+  file, `https://` / `s3://` URL, or dict via `TABULARMAPPER_CONFIG` / `configure()`.
   User synonyms merge on top of the defaults (`replace_synonyms: true` to opt out).
 - **Multiple output formats** via `output_format`: `records`, `json`, `bytes`,
   `base64`, `file` (`OutputResult`, lazily serialized) + `records_to_csv_bytes`.
@@ -98,7 +105,7 @@ a human-review gate.
   package, so imports are `from bank_statement_mapper import ...` and there is no
   top-level namespace pollution (`import cli` / `import schema` no longer leak).
 - Default mapping cache is now **SQLite** (concurrency-safe), not a JSON file.
-- The FastAPI `lifespan` only calls `configure()` when `BANK_MAPPER_CONFIG` is
+- The FastAPI `lifespan` only calls `configure()` when `TABULARMAPPER_CONFIG` is
   set, so a manual `configure("config.json")` before startup is not overwritten.
 
 ### Fixed

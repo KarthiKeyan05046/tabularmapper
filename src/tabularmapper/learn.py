@@ -12,7 +12,7 @@ Two halves, cleanly split:
 Effective synonyms at match time = seed + learned (seed wins on conflict).
 
 Storage uses the same URL convention as the cache (stores.open_store):
-    LearnStore()                                  # env SCHEMA_MAPPER_LEARN_STORE, else sqlite
+    LearnStore()                                  # env TABULARMAPPER_LEARN_STORE, else sqlite
     LearnStore("redis://localhost:6379/0")
     LearnStore("memory://")                        # tests
 
@@ -32,7 +32,7 @@ from typing import Optional
 
 from .stores import open_store
 
-# In-memory by default — creates NO files. Set SCHEMA_MAPPER_LEARN_STORE (or pass a
+# In-memory by default — creates NO files. Set TABULARMAPPER_LEARN_STORE (or pass a
 # URL) to a path / redis:// / valkey:// / postgresql:// for persistence.
 _DEFAULT_URL = "memory://"
 _KEY = "learned"
@@ -50,7 +50,7 @@ def _now() -> str:
 class LearnStore:
     def __init__(self, source: Optional[str] = None, *,
                  gated_fields=_DEFAULT_GATED, auto_apply_gated: bool = False):
-        url = source or os.getenv("SCHEMA_MAPPER_LEARN_STORE") or _DEFAULT_URL
+        url = source or os.getenv("TABULARMAPPER_LEARN_STORE") or _DEFAULT_URL
         self.url = url
         self._store = open_store(url)
         self.gated_fields = set(gated_fields)

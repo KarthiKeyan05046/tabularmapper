@@ -23,12 +23,12 @@ FIX = os.path.join(ROOT, "test_statements")
 def client(tmp_path, monkeypatch):
     # isolate the cache file; keep AI off (no key); learn store in memory;
     # the fixtures are bank statements -> load the bank preset via config.
-    monkeypatch.setenv("SCHEMA_MAPPER_CACHE", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("SCHEMA_MAPPER_LEARN_STORE", "memory://")
-    monkeypatch.setenv("SCHEMA_MAPPER_CONFIG", os.path.join(ROOT, "config.example.json"))
+    monkeypatch.setenv("TABULARMAPPER_CACHE", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("TABULARMAPPER_LEARN_STORE", "memory://")
+    monkeypatch.setenv("TABULARMAPPER_CONFIG", os.path.join(ROOT, "config.example.json"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import importlib
-    import schema_mapper.api as api
+    import tabularmapper.api as api
     importlib.reload(api)
     with TestClient(api.app) as c:   # `with` runs lifespan
         yield c
@@ -66,7 +66,7 @@ def test_map_rejects_non_xlsx(client):
 
 
 def test_router_prefix_default_and_custom():
-    import schema_mapper.api as api
+    import tabularmapper.api as api
     assert {r.path for r in api.router.routes} == {
         "/mapper/health", "/mapper/map",
         "/mapper/learn/pending", "/mapper/learn/approve", "/mapper/learn/reject"}
@@ -76,6 +76,6 @@ def test_router_prefix_default_and_custom():
 
 
 def test_router_prefix_from_env(monkeypatch):
-    monkeypatch.setenv("SCHEMA_MAPPER_ROUTE_PREFIX", "/ingest")
-    import schema_mapper.api as api
+    monkeypatch.setenv("TABULARMAPPER_ROUTE_PREFIX", "/ingest")
+    import tabularmapper.api as api
     assert "/ingest/map" in {r.path for r in api.make_router().routes}

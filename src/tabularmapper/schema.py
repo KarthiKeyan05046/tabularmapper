@@ -207,7 +207,7 @@ def bank_preset() -> Config:
     """Ready-made preset for bank statements (Date, Narration, Reference, Debit,
     Credit, Balance) with debit/credit reconciliation. Also in config.example.json.
 
-        from schema_mapper import bank_preset, configure
+        from tabularmapper import bank_preset, configure
         configure(config=bank_preset())
     """
     return Config(
@@ -296,7 +296,7 @@ def load_config(source: Optional[Union[str, dict]] = None,
     """Load configuration.
 
     source:
-      * None      -> env SCHEMA_MAPPER_CONFIG, else the built-in defaults
+      * None      -> env TABULARMAPPER_CONFIG, else the built-in defaults
       * dict      -> used directly
       * "s3://…"  -> S3 object (needs boto3) OR use a presigned https URL instead
       * "http(s)://…" / path / "file://…" -> fetched via stdlib urllib
@@ -305,7 +305,7 @@ def load_config(source: Optional[Union[str, dict]] = None,
     config never takes the service down) unless `strict=True`.
     """
     if source is None:
-        source = os.getenv("SCHEMA_MAPPER_CONFIG")
+        source = os.getenv("TABULARMAPPER_CONFIG")
     if source is None:
         return default_config()
     if isinstance(source, dict):
@@ -317,7 +317,7 @@ def load_config(source: Optional[Union[str, dict]] = None,
         if strict:
             raise
         _log.warning(
-            "SCHEMA_MAPPER config %r failed to load (%s: %s) — falling back to "
+            "TABULARMAPPER config %r failed to load (%s: %s) — falling back to "
             "built-in defaults", source, type(exc).__name__, exc)
         return default_config()
 

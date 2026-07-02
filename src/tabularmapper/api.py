@@ -1,21 +1,21 @@
 """
-api.py — drop-in FastAPI router for the bank statement mapper.
+api.py — drop-in FastAPI router for tabularmapper.
 
 Two ways to use it from your existing backend:
 
   A) Mount the router on your app (prefix defaults to /mapper):
 
         from fastapi import FastAPI
-        from schema_mapper.api import router, lifespan
+        from tabularmapper.api import router, lifespan
         app = FastAPI(lifespan=lifespan)      # builds cache + matcher once
         app.include_router(router)
         # -> POST /mapper/map , GET /mapper/health
 
-     Custom prefix: `make_router("/catalog")`, or set SCHEMA_MAPPER_ROUTE_PREFIX.
+     Custom prefix: `make_router("/catalog")`, or set TABULARMAPPER_ROUTE_PREFIX.
 
   B) Run it standalone:
 
-        uvicorn schema_mapper.api:app --reload
+        uvicorn tabularmapper.api:app --reload
 
 Design notes:
   * The MappingCache and the (optional) AI matcher are built ONCE in `lifespan`
@@ -56,7 +56,7 @@ def build_matcher():
 
 
 def build_learn_store():
-    """Self-learning vocabulary store (URL via SCHEMA_MAPPER_LEARN_STORE)."""
+    """Self-learning vocabulary store (URL via TABULARMAPPER_LEARN_STORE)."""
     from .learn import LearnStore
     return LearnStore()
 
@@ -72,14 +72,14 @@ state = _State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the output template + synonyms from SCHEMA_MAPPER_CONFIG (file / URL /
+    # Load the output template + synonyms from TABULARMAPPER_CONFIG (file / URL /
     # s3:// / dict). Only if the env var is set — otherwise we keep whatever is
     # already active, so a manual `configure("config.json")` before startup is
     # NOT overwritten.
-    _cfg = os.getenv("SCHEMA_MAPPER_CONFIG")
+    _cfg = os.getenv("TABULARMAPPER_CONFIG")
     if _cfg:
         engine.configure(_cfg)
-    state.cache = MappingCache()   # reads SCHEMA_MAPPER_CACHE (URL) or the sqlite default
+    state.cache = MappingCache()   # reads TABULARMAPPER_CACHE (URL) or the sqlite default
     state.matcher = build_matcher()
     state.learn = build_learn_store()
     engine.apply_learned(state.learn)   # activate already-learned synonyms
@@ -163,12 +163,12 @@ async def learn_reject(phrase: str, field: Optional[str] = None) -> dict:
 
 # --------------------------------------------------------------------------
 # Router factory — the prefix is configurable (default "/mapper", or the env
-# var SCHEMA_MAPPER_ROUTE_PREFIX). This is a general table->schema mapper, so the
+# var TABULARMAPPER_ROUTE_PREFIX). This is a general table->schema mapper, so the
 # route name isn't bank-specific and you can set your own.
 # --------------------------------------------------------------------------
 def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> APIRouter:
     if prefix is None:
-        prefix = os.getenv("SCHEMA_MAPPER_ROUTE_PREFIX", "/mapper")
+        prefix = os.getenv("TABULARMAPPER_ROUTE_PREFIX", "/mapper")
     r = APIRouter(prefix=prefix.rstrip("/"), tags=tags or ["mapper"])
     r.add_api_route("/health", health, methods=["GET"])
     r.add_api_route("/map", map_statement, methods=["POST"], response_model=MapResponse)
@@ -178,9 +178,9 @@ def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> AP
     return r
 
 
-# Default router instance -> /mapper/*  (or SCHEMA_MAPPER_ROUTE_PREFIX)
+# Default router instance -> /mapper/*  (or TABULARMAPPER_ROUTE_PREFIX)
 router = make_router()
 
-# Standalone app (uvicorn schema_mapper.api:app)
-app = FastAPI(title="Schema Mapper", lifespan=lifespan)
+# Standalone app (uvicorn tabularmapper.api:app)
+app = FastAPI(title="Tabular Mapper", lifespan=lifespan)
 app.include_router(router)

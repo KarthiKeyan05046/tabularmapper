@@ -19,8 +19,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from schema_mapper import engine as bm          # noqa: E402
-from schema_mapper import schema                     # noqa: E402
+from tabularmapper import engine as bm          # noqa: E402
+from tabularmapper import schema                     # noqa: E402
 
 FIX = os.path.join(ROOT, "test_statements")
 SAMPLES = os.path.join(ROOT, "samples")
@@ -102,7 +102,7 @@ def test_custom_schema_adds_new_field_type():
     assert r0["date"] and r0["date"] != None            # original date still there
 
 
-def test_generic_non_engine():
+def test_generic_custom_config():
     """The engine has no hardcoded bank fields: a product-catalog config with no
     date/debit/credit, no reconcile and no require_any maps and extracts cleanly
     and is NOT flagged for review."""
