@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The mapping cache is now scoped to the active schema. Previously the cache key
+  was the header row only, so changing your config (e.g. adding a field) and
+  reprocessing the same file returned the **stale** mapping and the new field
+  stayed unmapped. The key now includes a signature of the output schema +
+  synonyms + reconcile, so a config change invalidates old entries; learned
+  synonyms are excluded from the signature so learning doesn't churn the cache.
+
 ### Added
 - `currency` is now an accepted field `type`, equivalent to `number` / `money`
   (previously an unknown type silently fell back to `money`).

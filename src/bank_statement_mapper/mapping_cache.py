@@ -29,12 +29,14 @@ from .stores import open_store
 _DEFAULT_URL = "mapping_cache.db"
 
 
-def _fingerprint(header: list) -> str:
+def _fingerprint(header: list, namespace: str = "") -> str:
     parts = []
     for c in header:
         s = "" if c is None else re.sub(r"\s+", " ", str(c).strip().lower())
         parts.append(s)
-    raw = "|".join(parts)
+    # `namespace` scopes the key to the active schema, so a config change (e.g.
+    # adding a field) does NOT return a stale mapping for the same header.
+    raw = namespace + "\x00" + "|".join(parts)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -45,8 +47,8 @@ class MappingCache:
         self.url = url
         self._store = open_store(url)
 
-    def get(self, header: list) -> Optional[list[ColumnMap]]:
-        entry = self._store.get(_fingerprint(header))
+    def get(self, header: list, namespace: str = "") -> Optional[list[ColumnMap]]:
+        entry = self._store.get(_fingerprint(header, namespace))
         if not entry:
             return None
         return [
@@ -55,8 +57,9 @@ class MappingCache:
             for m in entry["columns"]
         ]
 
-    def put(self, header: list, col_maps: list[ColumnMap]) -> None:
-        self._store.put(_fingerprint(header), {
+    def put(self, header: list, col_maps: list[ColumnMap],
+            namespace: str = "") -> None:
+        self._store.put(_fingerprint(header, namespace), {
             "header_preview": [("" if c is None else str(c)) for c in header],
             "columns": [
                 {"col_index": m.col_index, "raw_header": m.raw_header,

@@ -762,6 +762,22 @@ def merge_ai_mapping(col_maps: list[ColumnMap], ai: dict) -> list[ColumnMap]:
     return col_maps
 
 
+def _schema_signature() -> str:
+    """Short hash of the active schema (output fields + types, allowed fields,
+    reconcile, and the config synonyms). The mapping cache is scoped by this, so
+    changing the config — e.g. adding a field — invalidates stale entries for the
+    same header instead of replaying an old mapping. Learned synonyms are NOT
+    included, so learning doesn't churn the cache."""
+    import hashlib
+    payload = json.dumps({
+        "fields": [[f, t] for f, t in _FIELD_TYPES.items()],
+        "allowed": sorted(ALLOWED_FIELDS),
+        "reconcile": _ACTIVE_CONFIG.reconcile,
+        "synonyms": {k: sorted(v) for k, v in _ACTIVE_CONFIG.synonyms.items()},
+    }, sort_keys=True, default=str)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+
+
 # --------------------------------------------------------------------------
 # Core runner
 # --------------------------------------------------------------------------
@@ -780,8 +796,9 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
 
     from_cache = False
     col_maps = None
+    schema_sig = _schema_signature()     # scope the cache to the active schema
     if cache is not None:
-        cached = cache.get(header)
+        cached = cache.get(header, namespace=schema_sig)
         if cached is not None:
             col_maps = cached
             from_cache = True
@@ -803,7 +820,7 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
     # unconfirmed fallback/low-confidence guess — that would let it be replayed
     # as if approved. (A human-approved mapping can be cached explicitly.)
     if cache is not None and not from_cache and not needs_review:
-        cache.put(header, col_maps)
+        cache.put(header, col_maps, namespace=schema_sig)
 
     result = ProcessResult(
         input_path=source_label, output_path=out_path, header_index=hc.index,
