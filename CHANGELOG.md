@@ -16,8 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   synonyms are excluded from the signature so learning doesn't churn the cache.
 
 ### Added
-- `currency` is now an accepted field `type`, equivalent to `number` / `money`
-  (previously an unknown type silently fell back to `money`).
+- More field `type` aliases so configs read naturally: `string`/`str` (text),
+  `integer`/`int` (numeric, coerced to `int` when whole), `float`/`decimal`/
+  `numeric`, `currency`, `datetime`. Unknown types no longer silently fall back.
+
+### Fixed
+- A custom config with no `critical_fields` no longer inherits the bank-specific
+  `["date"]` requirement — non-bank configs require nothing unless declared. (The
+  built-in bank preset still requires `date`.)
 
 ### Changed
 - Column mapping only assigns fields declared in your `output_schema` (plus any

@@ -38,10 +38,14 @@ from typing import Optional, Union
 
 _log = logging.getLogger("bank_mapper.schema")
 
-# Field types the engine understands. `money`, `number` and `currency` are
-# equivalent (all parse to a signed float); the names are just for readability.
-VALID_TYPES = {"date", "money", "number", "currency", "text"}
-NUMERIC_TYPES = {"money", "number", "currency"}
+# Field types the engine understands, grouped by how they're parsed. Many
+# aliases so configs read naturally ("string", "integer", "currency", …).
+DATE_TYPES = {"date", "datetime"}
+NUMERIC_TYPES = {"money", "number", "currency", "numeric", "decimal", "float",
+                 "integer", "int"}
+INTEGER_TYPES = {"integer", "int"}          # coerced to int when whole
+TEXT_TYPES = {"text", "string", "str"}
+VALID_TYPES = DATE_TYPES | NUMERIC_TYPES | TEXT_TYPES
 
 # --------------------------------------------------------------------------
 # Defaults — copied VERBATIM from the original bank_mapper.py constants so the
@@ -241,7 +245,10 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
             for p in phrases:
                 if p not in base:
                     base.append(p)
-    crit = d.get("critical_fields") or DEFAULT_CRITICAL_FIELDS
+    # Generic default: no critical fields unless declared (the bank preset in
+    # default_config() supplies ["date"]). This keeps non-bank configs from
+    # inheriting a bank-specific "date is required" rule.
+    crit = d.get("critical_fields") or []
     # Domain behavior defaults to EMPTY (generic mapper). Declare these keys to
     # opt into bank-style reconciliation etc. — the built-in default config (used
     # when no config is provided) supplies the bank preset.

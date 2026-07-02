@@ -39,7 +39,11 @@ from rapidfuzz import fuzz
 # These module globals are kept for backward compatibility; everything reads
 # them, and configure() swaps them atomically.
 # --------------------------------------------------------------------------
-from .schema import Config as _Config, load_config as _load_config  # noqa: E402
+from .schema import (  # noqa: E402
+    Config as _Config, load_config as _load_config,
+    DATE_TYPES as _DATE_TYPES, NUMERIC_TYPES as _NUMERIC_TYPES,
+    INTEGER_TYPES as _INTEGER_TYPES,
+)
 
 def _build_header_vocab(synonyms: dict) -> set:
     """Header-detection vocabulary, derived from the active config's synonyms +
@@ -602,10 +606,13 @@ def extract_records(rows: list[list], header_idx: int,
             else:
                 t = types.get(f, "text")
                 v = cell(r, col_of.get(f))
-                if t == "date":
+                if t in _DATE_TYPES:
                     rec[f] = normalize_date(v)
-                elif t in ("money", "number", "currency"):
-                    rec[f] = normalize_amount(v)          # signed
+                elif t in _NUMERIC_TYPES:
+                    val = normalize_amount(v)             # signed float
+                    if val is not None and t in _INTEGER_TYPES and float(val).is_integer():
+                        val = int(val)                    # integer type -> int
+                    rec[f] = val
                 else:
                     rec[f] = str(v).strip() if not _is_blank(v) else ""
 
