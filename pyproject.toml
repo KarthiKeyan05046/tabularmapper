@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bank-statement-mapper"
-version = "0.1.0"
+version = "1.0.0"
 description = "Map any bank statement .xlsx to a standard schema (deterministic + optional AI column matcher)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -15,7 +15,7 @@ authors = [
 ]
 keywords = ["bank statement", "xlsx", "etl", "column mapping", "fintech", "openpyxl"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Financial and Insurance Industry",
     "Programming Language :: Python :: 3",

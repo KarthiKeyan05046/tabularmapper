@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [0.1.0] — 2026-07-02
+## [1.0.0] — 2026-07-02
 
 First public release. Two-stage, auditable pipeline: deterministic header-row
 detection + synonym/fuzzy column mapping, deterministic date/amount parsing, and
@@ -69,5 +69,5 @@ a human-review gate.
   are opt-in extras — the core install pulls no database driver and makes zero
   network calls. Connection URLs (with secrets) belong in env/`.env`, never code.
 
-[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/KarthiKeyan05046/bank-statement-mapper/releases/tag/v0.1.0
+[Unreleased]: https://github.com/KarthiKeyan05046/bank-statement-mapper/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/KarthiKeyan05046/bank-statement-mapper/releases/tag/v1.0.0

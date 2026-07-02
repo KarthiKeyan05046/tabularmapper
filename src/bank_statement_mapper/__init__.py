@@ -36,7 +36,7 @@ from .mapping_cache import MappingCache
 from .schema import Config, config_from_dict, default_config, load_config
 from .stores import open_store
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "process_file",
