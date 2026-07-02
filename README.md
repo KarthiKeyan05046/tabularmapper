@@ -148,6 +148,35 @@ res = process_file("statement.xlsx", cache=cache)
 async manager and no `init_cache`/`close_cache`. Selecting the backend is the URL,
 full stop.
 
+### Runtime files (the `.db`, `.db-wal`, `.db-shm` you may see)
+
+With the default SQLite backend, the FastAPI `lifespan` opens the cache and the
+learn store **at startup**, so these appear in the working directory before you
+process anything:
+
+```
+mapping_cache.db        learned_synonyms.db        # the two SQLite databases
+mapping_cache.db-wal    learned_synonyms.db-wal     # SQLite write-ahead log
+mapping_cache.db-shm    learned_synonyms.db-shm     # SQLite shared-memory index
+```
+
+The `-wal` / `-shm` files are normal SQLite Write-Ahead-Logging sidecars (WAL is
+what makes the file concurrency-safe); they're checkpointed away on a clean
+shutdown. All of them are already in `.gitignore`. To control this:
+
+```bash
+BANK_MAPPER_CACHE=memory://           # no files at all (state lost on restart)
+BANK_MAPPER_LEARN_STORE=memory://
+# or relocate:
+BANK_MAPPER_CACHE=sqlite:////var/lib/bankmapper/cache.db
+# or use a server (no local files):
+BANK_MAPPER_LEARN_STORE=valkeys://user:pw@host:6379
+```
+
+Use `memory://` for stateless / read-only-filesystem deployments; a path or a
+Redis/Valkey/Postgres URL when you want the cache + learned vocabulary to survive
+restarts.
+
 ## Use with FastAPI
 
 The package ships a ready router. Two ways to use it.
@@ -343,6 +372,11 @@ Submodules: `bank_statement_mapper.ai_matcher` (`OpenAICompatibleMatcher`),
   the built-in default (which has `balance`) is active. Check the key is exactly
   `output_schema` and that `configure()`/`BANK_MAPPER_CONFIG` actually ran; a bad
   config logs a warning and falls back to defaults.
+- **The package created `.db` / `.db-wal` / `.db-shm` files on startup.** Those
+  are the SQLite cache + learn store (opened eagerly by the FastAPI `lifespan`);
+  the `-wal`/`-shm` are normal WAL sidecars. They're gitignored. Set
+  `BANK_MAPPER_CACHE=memory://` and `BANK_MAPPER_LEARN_STORE=memory://` for no
+  files, or point them at a path / Redis / Valkey. See [Runtime files](#runtime-files-the-db-db-wal-db-shm-you-may-see).
 - **AI never fires.** It's off unless `OPENAI_API_KEY` is set and you pass a
   `table_matcher` (or use the router, which builds one when the key is present).
 - **`ModuleNotFoundError: redis`** (or valkey/psycopg). You selected that backend
