@@ -94,6 +94,40 @@ def test_custom_schema_adds_new_field_type():
     assert r0["date"] and r0["date"] != None            # original date still there
 
 
+def test_generic_non_bank_mapper():
+    """The engine has no hardcoded bank fields: a product-catalog config with no
+    date/debit/credit, no reconcile and no require_any maps and extracts cleanly
+    and is NOT flagged for review."""
+    import io
+    import openpyxl
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.append(["ACME price list", None, None])          # junk row on top
+    ws.append(["SKU", "Product Name", "Unit Price"])
+    ws.append(["A-100", "Widget", "12.50"])
+    ws.append(["A-200", "Gadget", "7.99"])
+    buf = io.BytesIO(); wb.save(buf)
+
+    cfg = schema.config_from_dict({
+        "output_schema": [
+            {"field": "sku", "header": "SKU", "type": "text"},
+            {"field": "name", "header": "Product Name", "type": "text"},
+            {"field": "price", "header": "Unit Price", "type": "number"}],
+        "synonyms": {"sku": ["sku"], "name": ["product name"],
+                     "price": ["unit price"]},
+        "replace_synonyms": True,
+        "critical_fields": ["sku"],
+    })
+    bm.configure(config=cfg)
+    res = bm.process_stream(buf.getvalue())
+    assert res.header_index == 1
+    assert {m.raw_header: m.field for m in res.column_maps if m.field} == {
+        "SKU": "sku", "Product Name": "name", "Unit Price": "price"}
+    assert res.records == [
+        {"sku": "A-100", "name": "Widget", "price": 12.5},
+        {"sku": "A-200", "name": "Gadget", "price": 7.99}]
+    assert res.needs_review is False          # no bank require_any rule imposed
+
+
 def test_load_config_from_file(tmp_path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({

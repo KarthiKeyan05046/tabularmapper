@@ -279,10 +279,30 @@ a JSON file (or `https://` / `s3://` URL):
 }
 ```
 
-`type` is `date` | `money` | `text`. Rename a header, reorder, drop a column, or
-add a brand-new one — all config, no code. In a library (not the CLI/API) call
-`configure("config.json")` before processing. Defaults are byte-identical to not
-setting anything.
+`type` is `date` | `number` (alias `money`) | `text`. Rename a header, reorder,
+drop a column, or add a brand-new one — all config, no code. In a library (not
+the CLI/API) call `configure("config.json")` before processing.
+
+### Beyond banks — this is a general table→schema mapper
+
+The engine has **no hardcoded field names**. "Bank" behavior is just the default
+config; provide your own and it maps *any* spreadsheet (invoices, product
+catalogs, payroll…). Optional keys, all data-driven (omit them for a plain
+type-based mapping):
+
+| Key | What it does |
+|---|---|
+| `output_schema[].description` | hint for the AI matcher (falls back to the field name) |
+| `critical_fields` | fields that must be mapped, else `needs_review` |
+| `require_any` | `[[a, b]]` — each group needs ≥1 mapped field, else `needs_review` |
+| `reconcile` | `{"signed": s, "negative": n, "positive": p}` — split one signed column into two directional ones (the bank debit/credit rule) |
+| `row_keep_if_any` | a row is a record only if ≥1 of these has a value (default: any non-empty) |
+| `continuation_field` | a row with only this field folds into the row above (multi-line cells) |
+| `replace_synonyms` | `true` to start from an empty vocabulary instead of extending the defaults |
+
+The full bank preset is in `config.example.json` — copy it as a starting point.
+A minimal non-bank config needs only `output_schema` + `synonyms` +
+`replace_synonyms: true`. See `tests/test_schema.py::test_generic_non_bank_mapper`.
 
 ## API reference
 

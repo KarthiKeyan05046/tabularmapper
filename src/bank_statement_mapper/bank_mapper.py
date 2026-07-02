@@ -41,6 +41,23 @@ from rapidfuzz import fuzz
 # --------------------------------------------------------------------------
 from .schema import Config as _Config, load_config as _load_config  # noqa: E402
 
+def _build_header_vocab(synonyms: dict) -> set:
+    """Header-detection vocabulary, derived from the active config's synonyms +
+    field names — NOT a hardcoded bank list. Adapts to whatever domain the
+    config describes."""
+    import re as _re
+    vocab: set = set()
+    for fld, phrases in synonyms.items():
+        for tok in _re.split(r"[^a-z0-9]+", str(fld).lower()):
+            if len(tok) >= 2:
+                vocab.add(tok)
+        for phrase in phrases:
+            for tok in _re.split(r"[^a-z0-9]+", str(phrase).lower()):
+                if len(tok) >= 2:
+                    vocab.add(tok)
+    return vocab
+
+
 _ACTIVE_CONFIG: _Config = _load_config()
 _LEARNED_SYNONYMS: dict = {}          # {field: [phrases]} from the learn store
 
@@ -49,15 +66,14 @@ SYNONYMS: dict[str, list[str]] = {k: list(v) for k, v in _ACTIVE_CONFIG.synonyms
 CRITICAL_FIELDS: set = set(_ACTIVE_CONFIG.critical_fields)
 ALLOWED_FIELDS: list[str] = _ACTIVE_CONFIG.allowed_fields
 _FIELD_TYPES: dict[str, str] = _ACTIVE_CONFIG.field_types
+_HEADER_VOCAB: set = _build_header_vocab(SYNONYMS)
 
 
 def _apply_synonyms() -> None:
-    """Rebuild the effective SYNONYMS + exact lookup = config seed + learned.
-
-    Config (seed) phrases are authoritative on conflict, so a learned phrase can
-    never override a seed's field. Learned phrases only *extend* the vocabulary.
-    """
-    global SYNONYMS, _EXACT_LOOKUP
+    """Rebuild the effective SYNONYMS + exact lookup + header vocab = config seed
+    + learned. Config (seed) phrases are authoritative on conflict; learned
+    phrases only *extend* the vocabulary."""
+    global SYNONYMS, _EXACT_LOOKUP, _HEADER_VOCAB
     merged = {f: list(v) for f, v in _ACTIVE_CONFIG.synonyms.items()}
     for fld, phrases in _LEARNED_SYNONYMS.items():
         merged.setdefault(fld, [])
@@ -68,6 +84,7 @@ def _apply_synonyms() -> None:
     lut = _build_exact_lookup(_LEARNED_SYNONYMS)      # learned first...
     lut.update(_build_exact_lookup(_ACTIVE_CONFIG.synonyms))  # ...seed overrides
     _EXACT_LOOKUP = lut
+    _HEADER_VOCAB = _build_header_vocab(merged)
 
 
 def configure(source=None, config: "Optional[_Config]" = None) -> None:
@@ -190,13 +207,6 @@ class ProcessResult:
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
-_BANK_VOCAB = {
-    "date", "txn", "transaction", "value", "narration", "particulars",
-    "description", "details", "remarks", "reference", "ref", "cheque", "chq",
-    "debit", "credit", "withdrawal", "deposit", "balance", "amount", "dr", "cr",
-    "utr", "branch", "code", "no",
-}
-
 _NUM_RE = re.compile(r"^[\s₹$€£rs\.]*[-(]?[\d,]+\.?\d*\)?[\s]*(dr|cr)?$", re.I)
 
 
@@ -275,7 +285,7 @@ def detect_header_row(rows: list[list], scan_limit: int = 25) -> HeaderCandidate
             for t in re.split(r"[^a-z]+", c.lower()):
                 if t:
                     toks.add(t)
-        vocab_hits = len(toks & _BANK_VOCAB)
+        vocab_hits = len(toks & _HEADER_VOCAB)
 
         # data_below: sample up to 5 rows beneath; reward numeric/date content
         below_scores = []
@@ -525,72 +535,80 @@ def extract_records(rows: list[list], header_idx: int,
     Skips non-transaction rows (no date AND no money). Merges multi-line
     descriptions that spill into blank cells below a transaction.
     """
-    fields = _ACTIVE_CONFIG.fields          # ordered output field keys
-    types = _FIELD_TYPES                     # field -> "date"|"money"|"text"
+    cfg = _ACTIVE_CONFIG
+    fields = cfg.fields                       # ordered output field keys
+    types = _FIELD_TYPES                       # field -> "date"|"money"/"number"|"text"
     col_of = {f: _field_col(col_maps, f) for f in fields}
-    ci_debit = col_of.get("debit")
-    ci_credit = col_of.get("credit")
-    ci_amt = _field_col(col_maps, "amount")  # input-only mapping (may be output too)
+
+    # Optional signed/split reconciliation, declared in config (not hardcoded):
+    #   reconcile = {"signed": <src>, "negative": <fld>, "positive": <fld>}
+    rec_cfg = cfg.reconcile or {}
+    neg_f, pos_f, sig_f = rec_cfg.get("negative"), rec_cfg.get("positive"), rec_cfg.get("signed")
+    ci_neg = _field_col(col_maps, neg_f) if neg_f else None
+    ci_pos = _field_col(col_maps, pos_f) if pos_f else None
+    ci_sig = _field_col(col_maps, sig_f) if sig_f else None
+
+    # Which fields decide "this row is a real record". Config-driven; if unset,
+    # keep any row that has at least one non-empty mapped value (generic).
+    keep_fields = cfg.row_keep_if_any or fields
+    cont_field = cfg.continuation_field
 
     def cell(r, ci):
         return r[ci] if (ci is not None and ci < len(r)) else None
+
+    def _present(v):
+        return v is not None and v != ""
 
     records: list[dict] = []
     for r in rows[header_idx + 1:]:
         if all(_is_blank(c) for c in r):
             continue
 
-        # --- money reconciliation (debit/credit vs single signed amount) ---
-        debit = credit = None
-        if ci_amt is not None and ci_debit is None and ci_credit is None:
-            amt = normalize_amount(cell(r, ci_amt))
-            if amt is not None:
-                if amt < 0:
-                    debit = abs(amt)
-                elif amt > 0:
-                    credit = amt
-                else:
-                    debit = 0.0
-        else:
-            d = normalize_amount(cell(r, ci_debit))
-            c = normalize_amount(cell(r, ci_credit))
-            debit = abs(d) if d is not None else None
-            credit = abs(c) if c is not None else None
+        # --- reconcile the directional pair, if declared ---
+        neg_val = pos_val = None
+        if rec_cfg:
+            if ci_sig is not None and ci_neg is None and ci_pos is None:
+                amt = normalize_amount(cell(r, ci_sig))    # one signed column -> split
+                if amt is not None:
+                    if amt < 0:
+                        neg_val = abs(amt)
+                    elif amt > 0:
+                        pos_val = amt
+                    else:
+                        neg_val = 0.0
+            else:
+                d = normalize_amount(cell(r, ci_neg)) if ci_neg is not None else None
+                c = normalize_amount(cell(r, ci_pos)) if ci_pos is not None else None
+                neg_val = abs(d) if d is not None else None
+                pos_val = abs(c) if c is not None else None
 
         # --- build the record, one value per schema field, by type ---
         rec: dict = {}
-        date_val = None
         for f in fields:
-            if f == "debit":
-                rec[f] = debit
-            elif f == "credit":
-                rec[f] = credit
+            if rec_cfg and f == neg_f:
+                rec[f] = neg_val
+            elif rec_cfg and f == pos_f:
+                rec[f] = pos_val
             else:
                 t = types.get(f, "text")
                 v = cell(r, col_of.get(f))
                 if t == "date":
                     rec[f] = normalize_date(v)
-                    if f == "date":
-                        date_val = rec[f]
-                elif t == "money":
-                    rec[f] = normalize_amount(v)      # balance / amount = signed
+                elif t in ("money", "number"):
+                    rec[f] = normalize_amount(v)          # signed
                 else:
                     rec[f] = str(v).strip() if not _is_blank(v) else ""
-        if date_val is None:
-            date_val = rec.get("date")
 
-        has_money = debit is not None or credit is not None
-        desc_val = rec.get("description", "")
+        kept = any(_present(rec.get(f)) for f in keep_fields)
 
-        # multi-line description continuation: a row with only a description
-        # and no date/money folds into the previous record.
-        if not date_val and not has_money and desc_val and records and "description" in rec:
-            records[-1]["description"] = (
-                records[-1].get("description", "") + " " + desc_val).strip()
+        # continuation: a row with only the continuation field (and nothing that
+        # would keep it) folds into the record above it.
+        if not kept and cont_field and _present(rec.get(cont_field)) and records:
+            records[-1][cont_field] = (
+                str(records[-1].get(cont_field, "")) + " " + str(rec[cont_field])).strip()
             continue
 
-        # skip rows that carry no date and no money (pure noise / subtotals)
-        if not date_val and not has_money:
+        if not kept:
             continue
 
         records.append(rec)
@@ -605,14 +623,15 @@ def evaluate_review(col_maps: list[ColumnMap], records: list[dict],
     reasons: list[str] = []
     mapped_fields = {m.field for m in col_maps if m.field}
 
-    # critical: date required
+    # critical: each configured critical field must be mapped
     for cf in CRITICAL_FIELDS:
         if cf not in mapped_fields:
             reasons.append(f"missing critical field: {cf}")
 
-    # money movement must be knowable
-    if not ({"debit", "credit"} & mapped_fields) and "amount" not in mapped_fields:
-        reasons.append("no debit/credit or signed amount column found")
+    # require_any: each configured group needs at least one mapped field
+    for group in (_ACTIVE_CONFIG.require_any or []):
+        if not (set(group) & mapped_fields):
+            reasons.append(f"none of {group} was mapped")
 
     # low-confidence mapped columns
     for m in col_maps:
@@ -689,8 +708,9 @@ def _has_critical_gap(col_maps: list[ColumnMap]) -> bool:
     fields = {m.field for m in col_maps if m.field}
     if not CRITICAL_FIELDS.issubset(fields):
         return True
-    if not ({"debit", "credit"} & fields) and "amount" not in fields:
-        return True
+    for group in (_ACTIVE_CONFIG.require_any or []):
+        if not (set(group) & fields):
+            return True
     return False
 
 

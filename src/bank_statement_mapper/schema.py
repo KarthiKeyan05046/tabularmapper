@@ -38,24 +38,45 @@ from typing import Optional, Union
 
 _log = logging.getLogger("bank_mapper.schema")
 
-# Money fields that participate in debit/credit reconciliation.
-MONEY_MOVEMENT = {"debit", "credit", "amount"}
-VALID_TYPES = {"date", "money", "text"}
+# Field types the engine understands. `money` and `number` are equivalent
+# (both parse to a signed float); `money` is kept for readability in bank configs.
+VALID_TYPES = {"date", "money", "number", "text"}
 
 # --------------------------------------------------------------------------
 # Defaults — copied VERBATIM from the original bank_mapper.py constants so the
 # out-of-the-box behavior is byte-identical.
 # --------------------------------------------------------------------------
 DEFAULT_SCHEMA: list[dict] = [
-    {"field": "date", "header": "Date", "type": "date"},
-    {"field": "description", "header": "Narration", "type": "text"},
-    {"field": "reference", "header": "Reference Number", "type": "text"},
-    {"field": "debit", "header": "Debit", "type": "money"},
-    {"field": "credit", "header": "Credit", "type": "money"},
-    {"field": "balance", "header": "Balance", "type": "money"},
+    {"field": "date", "header": "Date", "type": "date",
+     "description": "the transaction date (post/value/booking date)"},
+    {"field": "description", "header": "Narration", "type": "text",
+     "description": "free-text narration / particulars / details of the transaction"},
+    {"field": "reference", "header": "Reference Number", "type": "text",
+     "description": "reference or cheque/UTR/instrument number identifying the entry"},
+    {"field": "debit", "header": "Debit", "type": "money",
+     "description": "money leaving the account (withdrawal / paid out); a debit-only column"},
+    {"field": "credit", "header": "Credit", "type": "money",
+     "description": "money entering the account (deposit / paid in); a credit-only column"},
+    {"field": "balance", "header": "Balance", "type": "money",
+     "description": "running account balance after the transaction"},
 ]
 
 DEFAULT_CRITICAL_FIELDS: list[str] = ["date"]
+
+# --- Bank preset behavior (all data, not engine logic) -------------------
+# reconcile: a single signed `amount` column is split into debit(-)/credit(+);
+#   when debit/credit are their own columns they're taken as positive.
+DEFAULT_RECONCILE: dict = {"signed": "amount", "negative": "debit", "positive": "credit"}
+# require_any: each group needs >=1 mapped field or the statement is flagged.
+DEFAULT_REQUIRE_ANY: list = [["debit", "credit", "amount"]]
+# row_keep_if_any: a row is a real record if >=1 of these has a value.
+DEFAULT_ROW_KEEP_IF_ANY: list = ["date", "debit", "credit"]
+# continuation_field: a row with only this field folds into the row above it.
+DEFAULT_CONTINUATION_FIELD: Optional[str] = "description"
+# descriptions for fields the AI matcher may see but that aren't output columns
+DEFAULT_FIELD_DESCRIPTIONS: dict = {
+    "amount": "a SINGLE signed amount column (one column, +credit / -debit)",
+}
 
 DEFAULT_SYNONYMS: dict[str, list[str]] = {
     "date": [
@@ -106,7 +127,8 @@ DEFAULT_SYNONYMS: dict[str, list[str]] = {
 class FieldSpec:
     field: str                 # internal key: date, description, debit, ...
     header: str                # display name written to the output file
-    type: str = "text"         # date | money | text
+    type: str = "text"         # date | number/money | text
+    description: str = ""       # optional; used by the AI matcher
 
 
 @dataclass
@@ -114,6 +136,12 @@ class Config:
     output_schema: list[FieldSpec]
     synonyms: dict[str, list[str]]
     critical_fields: list[str]
+    # domain behavior — all data-driven, empty by default for a generic mapper
+    reconcile: dict = _field(default_factory=dict)          # {signed,negative,positive}
+    require_any: list = _field(default_factory=list)        # [[field, ...], ...]
+    row_keep_if_any: list = _field(default_factory=list)    # keep row if any has a value
+    continuation_field: Optional[str] = None                # multi-line fold target
+    extra_field_descriptions: dict = _field(default_factory=dict)  # non-output field defs
 
     # -- derived views the engine consumes --
     @property
@@ -130,10 +158,24 @@ class Config:
         return {f.field: f.type for f in self.output_schema}
 
     @property
+    def field_descriptions(self) -> dict[str, str]:
+        """{field: description} for the AI matcher (output fields + extras)."""
+        out = {f.field: (f.description or f.field) for f in self.output_schema}
+        out.update(self.extra_field_descriptions)
+        return out
+
+    @property
+    def reconcile_fields(self) -> list[str]:
+        """The fields involved in signed/split reconciliation, if any."""
+        r = self.reconcile or {}
+        return [r[k] for k in ("signed", "negative", "positive") if r.get(k)]
+
+    @property
     def allowed_fields(self) -> list[str]:
         fs = list(self.fields)
-        if "amount" not in fs:          # amount is always a legal INPUT mapping
-            fs = fs + ["amount"]
+        for extra in list(self.extra_field_descriptions) + self.reconcile_fields:
+            if extra not in fs:
+                fs.append(extra)
         return fs
 
 
@@ -153,6 +195,11 @@ def default_config() -> Config:
         output_schema=[FieldSpec(**d) for d in DEFAULT_SCHEMA],
         synonyms={k: list(v) for k, v in DEFAULT_SYNONYMS.items()},
         critical_fields=list(DEFAULT_CRITICAL_FIELDS),
+        reconcile=dict(DEFAULT_RECONCILE),
+        require_any=[list(g) for g in DEFAULT_REQUIRE_ANY],
+        row_keep_if_any=list(DEFAULT_ROW_KEEP_IF_ANY),
+        continuation_field=DEFAULT_CONTINUATION_FIELD,
+        extra_field_descriptions=dict(DEFAULT_FIELD_DESCRIPTIONS),
     )
 
 
@@ -173,6 +220,7 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
                 field=key,
                 header=item.get("header", key),
                 type=item.get("type") or _infer_type(key),
+                description=item.get("description", ""),
             ))
         elif isinstance(item, (list, tuple)) and len(item) >= 2:
             specs.append(FieldSpec(field=item[0], header=item[1],
@@ -193,10 +241,18 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
                 if p not in base:
                     base.append(p)
     crit = d.get("critical_fields") or DEFAULT_CRITICAL_FIELDS
+    # Domain behavior defaults to EMPTY (generic mapper). Declare these keys to
+    # opt into bank-style reconciliation etc. — the built-in default config (used
+    # when no config is provided) supplies the bank preset.
     return Config(
         output_schema=specs or [FieldSpec(**x) for x in DEFAULT_SCHEMA],
         synonyms=syn,
         critical_fields=list(crit),
+        reconcile=dict(d.get("reconcile") or {}),
+        require_any=[list(g) for g in (d.get("require_any") or [])],
+        row_keep_if_any=list(d.get("row_keep_if_any") or []),
+        continuation_field=d.get("continuation_field"),
+        extra_field_descriptions=dict(d.get("field_descriptions") or {}),
     )
 
 
@@ -266,9 +322,15 @@ def config_to_dict(cfg: Config) -> dict:
     return {
         "version": 1,
         "output_schema": [
-            {"field": f.field, "header": f.header, "type": f.type}
+            {"field": f.field, "header": f.header, "type": f.type,
+             **({"description": f.description} if f.description else {})}
             for f in cfg.output_schema
         ],
         "critical_fields": list(cfg.critical_fields),
+        "reconcile": dict(cfg.reconcile),
+        "require_any": [list(g) for g in cfg.require_any],
+        "row_keep_if_any": list(cfg.row_keep_if_any),
+        "continuation_field": cfg.continuation_field,
+        "field_descriptions": dict(cfg.extra_field_descriptions),
         "synonyms": {k: list(v) for k, v in cfg.synonyms.items()},
     }

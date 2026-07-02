@@ -35,17 +35,11 @@ import re
 import urllib.request
 from typing import Callable, Optional
 
-# Concise field definitions the LLM maps onto. Kept separate from the embedding
-# descriptions because an instruct model wants crisp semantics, not keyword soup.
-FIELD_DEFS: dict[str, str] = {
-    "date": "the transaction date (post/value/booking date)",
-    "description": "free-text narration / particulars / details of the transaction",
-    "reference": "reference or cheque/UTR/instrument number identifying the entry",
-    "debit": "money leaving the account (withdrawal / paid out); a debit-only column",
-    "credit": "money entering the account (deposit / paid in); a credit-only column",
-    "balance": "running account balance after the transaction",
-    "amount": "a SINGLE signed amount column (one column, +credit / -debit)",
-}
+# No hardcoded field definitions — descriptions come from the config (each
+# output field may carry a `description`). When a field has none, the matcher
+# falls back to the field name itself, so this works for ANY domain, not just
+# banking. Pass `field_defs={field: description}` to override.
+FIELD_DEFS: dict[str, str] = {}
 
 
 # --------------------------------------------------------------------------
@@ -152,7 +146,7 @@ class OpenAICompatibleMatcher:
                          or "https://api.openai.com/v1").rstrip("/")
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.field_defs = field_defs or FIELD_DEFS
+        self.field_defs = field_defs if field_defs is not None else dict(FIELD_DEFS)
         self.include_samples = include_samples
         self.timeout = timeout
         self.temperature = temperature

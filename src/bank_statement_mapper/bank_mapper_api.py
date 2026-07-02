@@ -48,7 +48,9 @@ def build_matcher():
     if not os.getenv("OPENAI_API_KEY"):
         return None
     from .ai_matcher import OpenAICompatibleMatcher
-    return OpenAICompatibleMatcher()  # reads OPENAI_BASE_URL / OPENAI_MODEL too
+    # field descriptions come from the active config (not hardcoded)
+    return OpenAICompatibleMatcher(
+        field_defs=bank_mapper._ACTIVE_CONFIG.field_descriptions)
 
 
 def build_learn_store():

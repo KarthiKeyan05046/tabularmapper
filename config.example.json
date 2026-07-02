@@ -4,32 +4,64 @@
     {
       "field": "date",
       "header": "Date",
-      "type": "date"
+      "type": "date",
+      "description": "the transaction date (post/value/booking date)"
     },
     {
       "field": "description",
       "header": "Narration",
-      "type": "text"
+      "type": "text",
+      "description": "free-text narration / particulars / details of the transaction"
     },
     {
       "field": "reference",
       "header": "Reference Number",
-      "type": "text"
+      "type": "text",
+      "description": "reference or cheque/UTR/instrument number identifying the entry"
     },
     {
       "field": "debit",
       "header": "Debit",
-      "type": "money"
+      "type": "money",
+      "description": "money leaving the account (withdrawal / paid out); a debit-only column"
     },
     {
       "field": "credit",
       "header": "Credit",
-      "type": "money"
+      "type": "money",
+      "description": "money entering the account (deposit / paid in); a credit-only column"
+    },
+    {
+      "field": "balance",
+      "header": "Balance",
+      "type": "money",
+      "description": "running account balance after the transaction"
     }
   ],
   "critical_fields": [
     "date"
   ],
+  "reconcile": {
+    "signed": "amount",
+    "negative": "debit",
+    "positive": "credit"
+  },
+  "require_any": [
+    [
+      "debit",
+      "credit",
+      "amount"
+    ]
+  ],
+  "row_keep_if_any": [
+    "date",
+    "debit",
+    "credit"
+  ],
+  "continuation_field": "description",
+  "field_descriptions": {
+    "amount": "a SINGLE signed amount column (one column, +credit / -debit)"
+  },
   "synonyms": {
     "date": [
       "date",
