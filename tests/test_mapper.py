@@ -342,6 +342,49 @@ def test_ai_matcher_graceful_on_transport_error():
 
 
 # --------------------------------------------------------------------------
+# C13 regression — split two-row header must not corrupt amounts/direction
+# --------------------------------------------------------------------------
+def test_c13_split_multirow_header_no_corruption():
+    """Regression for the C13 stress bug: a header split across two physical rows
+    ('Withdrawal | Deposit' over 'Amount | Amount') must NOT collapse both money
+    columns into one — which previously booked a withdrawal as a credit and
+    dropped a 45,000 credit entirely, silently."""
+    p = os.path.join(ROOT, "test_statements", "confusing",
+                     "C13_split_multirow_header.xlsx")
+    if not os.path.exists(p):
+        pytest.skip("C13 fixture not present")
+    res = process_file(p)
+    f = {m.raw_header: m for m in res.column_maps}
+    # the wrapped header is recovered -> two DISTINCT money columns
+    assert f["Withdrawal Amount"].field == "debit"
+    assert f["Deposit Amount"].field == "credit"
+    assert res.needs_review is False
+    recs = res.records
+    # withdrawal 1299.50 is a DEBIT (was a phantom credit); the 45,000 deposit
+    # survives as a CREDIT (was dropped)
+    assert any(r["debit"] == 1299.50 and r.get("credit") is None for r in recs)
+    assert any(r["credit"] == 45000.0 and r.get("debit") is None for r in recs)
+    # and the withdrawal is never mis-booked as a credit anywhere
+    assert not any(r.get("credit") == 1299.50 for r in recs)
+
+
+def test_mutex_numeric_dup_flags_review_backstop(tmp_path):
+    """When a split header can't be recovered (single-row header, two identical
+    'Amount' columns), two mutually-exclusive numeric columns collapsing to one
+    field must flag needs_review — never silently drop one as a plain `dup`."""
+    from openpyxl import Workbook
+    wb = Workbook(); ws = wb.active
+    ws.append(["Date", "Narration", "Amount", "Amount"])   # no fragment row above
+    ws.append(["01-06-2025", "UPI PAY", "1299.50", ""])
+    ws.append(["02-06-2025", "SALARY", "", "45000"])
+    p = str(tmp_path / "two_amount.xlsx"); wb.save(p)
+    res = process_file(p)
+    assert res.needs_review is True
+    assert any("collapsed to one field" in r for r in res.review_reasons)
+    assert any(m.method == "dup_pair" for m in res.column_maps)
+
+
+# --------------------------------------------------------------------------
 # Real-world files (present in repo root)
 # --------------------------------------------------------------------------
 def test_real_payir_header_deep():

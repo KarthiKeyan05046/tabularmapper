@@ -340,6 +340,48 @@ def detect_header_row(rows: list[list], scan_limit: int = 25) -> HeaderCandidate
     return best
 
 
+def _looks_like_header_fragment(cells: list) -> bool:
+    """True if `cells` looks like the top half of a split multi-row header:
+    several short TEXT labels, spanning ≥2 columns, with no numeric/date cells.
+    Excludes single-cell banners/titles (need ≥2 filled columns) and metadata
+    rows (which carry numbers). Used to merge a wrapped header into one row."""
+    nb = [c for c in cells if not _is_blank(c)]
+    if len(nb) < 2:
+        return False
+    for c in nb:
+        if not isinstance(c, str):
+            return False
+        if _looks_numeric(c) or _looks_datey(c):
+            return False
+        if len(c.strip()) > 25:            # header labels are short
+            return False
+    return True
+
+
+def _merge_split_header(rows: list[list], h: int) -> list:
+    """Return the header cells for row `h`, merging in the row directly above it
+    when that row is a header fragment (a split two-row header). This recovers
+    column meaning that a single-row read would lose — e.g. a top row
+    `Withdrawal | Deposit` over a bottom row `Amount | Amount`, which otherwise
+    collapses both money columns to one field and corrupts debit/credit.
+
+    Data still starts at row h+1, so no transaction row is consumed."""
+    cells = list(rows[h]) if h < len(rows) else []
+    if h >= 1 and _looks_like_header_fragment(rows[h - 1]):
+        top = rows[h - 1]
+        width = max(len(top), len(cells))
+        merged = []
+        for i in range(width):
+            a = top[i] if i < len(top) else None
+            b = cells[i] if i < len(cells) else None
+            a = "" if _is_blank(a) else str(a).strip()
+            b = "" if _is_blank(b) else str(b).strip()
+            piece = (a + " " + b).strip()
+            merged.append(piece if piece else None)
+        return merged
+    return cells
+
+
 # --------------------------------------------------------------------------
 # Stage 2 — column mapping (exact -> fuzzy -> fallback)
 # --------------------------------------------------------------------------
@@ -371,6 +413,27 @@ def _fuzzy_best(header: str) -> tuple[Optional[str], int]:
             if s > best_score:
                 best_field, best_score = fld, s
     return best_field, best_score
+
+
+def _cols_mutex_numeric(a: int, b: int, rows: list[list]) -> bool:
+    """True if columns a and b are both numeric AND mutually exclusive across the
+    sample rows — each carries values, but never both in the same row. That's the
+    debit/credit-pair signature: dropping one (as a `dup`) would corrupt amounts."""
+    a_fill = b_fill = both = a_num = b_num = 0
+    for r in rows:
+        va = r[a] if a < len(r) else None
+        vb = r[b] if b < len(r) else None
+        fa, fb = (not _is_blank(va)), (not _is_blank(vb))
+        if fa:
+            a_fill += 1
+            a_num += 1 if _looks_numeric(va) else 0
+        if fb:
+            b_fill += 1
+            b_num += 1 if _looks_numeric(vb) else 0
+        if fa and fb:
+            both += 1
+    return (a_fill >= 1 and b_fill >= 1 and both == 0
+            and a_num == a_fill and b_num == b_fill)
 
 
 def map_columns(
@@ -434,18 +497,30 @@ def map_columns(
     # Resolve duplicates: if two columns claim the same field, keep the higher
     # confidence one; demote the loser to unresolved (needs_review will catch).
     by_field: dict[str, ColumnMap] = {}
+    demotions: list[tuple[ColumnMap, int]] = []   # (loser, winner_col_index)
     for m in maps:
         if m.field is None:
             continue
-        if m.field not in by_field or m.confidence > by_field[m.field].confidence:
-            prev = by_field.get(m.field)
-            if prev is not None:
-                prev.field = None
-                prev.method = "dup"
+        cur = by_field.get(m.field)
+        if cur is None or m.confidence > cur.confidence:
+            if cur is not None:
+                cur.field = None
+                cur.method = "dup"
+                demotions.append((cur, m.col_index))
             by_field[m.field] = m
         else:
+            winner_ci = cur.col_index
             m.field = None
             m.method = "dup"
+            demotions.append((m, winner_ci))
+
+    # Backstop: two mutually-exclusive numeric columns collapsing to the SAME
+    # field is the debit/credit-pair signature (e.g. a split header both named
+    # "Amount" that the merge couldn't recover). Silently dropping one flips or
+    # loses amounts, so mark it `dup_pair` -> needs_review, never drop it quietly.
+    for loser, winner_ci in demotions:
+        if _cols_mutex_numeric(winner_ci, loser.col_index, sample_rows):
+            loser.method = "dup_pair"
     assigned.update(by_field.keys())
     return maps
 
@@ -671,6 +746,14 @@ def evaluate_review(col_maps: list[ColumnMap], records: list[dict],
         if m.field and m.method == "llm":
             reasons.append(f"fallback-resolved column '{m.raw_header}' -> {m.field}")
 
+    # two mutually-exclusive numeric columns collapsed into one field — a likely
+    # debit/credit pair a single-row header hid. Never let this pass silently.
+    for m in col_maps:
+        if m.method == "dup_pair":
+            reasons.append(
+                f"two numeric columns collapsed to one field near "
+                f"'{m.raw_header}' — likely a debit/credit pair; review")
+
     if not records:
         reasons.append("no transaction rows extracted")
 
@@ -819,7 +902,9 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
                              ["empty sheet"], {})
 
     hc = detect_header_row(rows, scan_limit=scan_limit)
-    header = hc.cells
+    # Merge a wrapped header (a header-fragment row directly above the detected
+    # one) so a split two-row header doesn't collapse two money columns into one.
+    header = _merge_split_header(rows, hc.index)
     sample_rows = rows[hc.index + 1: hc.index + 6]
 
     from_cache = False

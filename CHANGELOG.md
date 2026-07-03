@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.8] — 2026-07-03
+
+### Fixed
+- **Split two-row header no longer corrupts debit/credit.** When a header is
+  wrapped across two physical rows (e.g. `Withdrawal | Deposit` above
+  `Amount | Amount`), the engine now merges the header-fragment row directly above
+  the detected header, so the two money columns map to `debit` and `credit`
+  instead of collapsing to one field. Previously a withdrawal was silently booked
+  as a credit and a matching credit amount was dropped. The merge is conservative:
+  it only merges a row of short text-only labels spanning ≥2 columns, so titles,
+  merged banners, and metadata rows are untouched.
+
+### Added
+- **Mutually-exclusive numeric dup backstop.** If two numeric columns are
+  mutually exclusive across the sampled rows yet collapse to the same field (the
+  debit/credit-pair signature a single-row header can hide), the loser is flagged
+  `needs_review` instead of being silently dropped as a `dup`.
+
 ## [1.0.7] — 2026-07-03
 
 ### Added
@@ -134,7 +152,8 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.3...v1.0.5
