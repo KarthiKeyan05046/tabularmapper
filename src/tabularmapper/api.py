@@ -73,9 +73,12 @@ def build_matcher():
     if not os.getenv("OPENAI_API_KEY"):
         return None
     from .ai_matcher import OpenAICompatibleMatcher
-    # field descriptions come from the active config (not hardcoded)
+    # field descriptions AND the (optional) system prompt come from the active
+    # config — not hardcoded. If the config leaves ai_system_prompt unset, the
+    # matcher falls back to TABULARMAPPER_AI_SYSTEM_PROMPT or its neutral default.
     return OpenAICompatibleMatcher(
-        field_defs=engine._ACTIVE_CONFIG.field_descriptions)
+        field_defs=engine._ACTIVE_CONFIG.field_descriptions,
+        system_prompt=engine._ACTIVE_CONFIG.ai_system_prompt)
 
 
 def build_learn_store():

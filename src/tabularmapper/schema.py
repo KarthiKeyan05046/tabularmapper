@@ -147,6 +147,7 @@ class Config:
     row_keep_if_any: list = _field(default_factory=list)    # keep row if any has a value
     continuation_field: Optional[str] = None                # multi-line fold target
     extra_field_descriptions: dict = _field(default_factory=dict)  # non-output field defs
+    ai_system_prompt: Optional[str] = None                  # override the AI matcher's system prompt
 
     # -- derived views the engine consumes --
     @property
@@ -258,6 +259,7 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
         row_keep_if_any=list(d.get("row_keep_if_any") or []),
         continuation_field=d.get("continuation_field"),
         extra_field_descriptions=dict(d.get("field_descriptions") or {}),
+        ai_system_prompt=d.get("ai_system_prompt"),
     )
 
 
@@ -337,5 +339,6 @@ def config_to_dict(cfg: Config) -> dict:
         "row_keep_if_any": list(cfg.row_keep_if_any),
         "continuation_field": cfg.continuation_field,
         "field_descriptions": dict(cfg.extra_field_descriptions),
+        **({"ai_system_prompt": cfg.ai_system_prompt} if cfg.ai_system_prompt else {}),
         "synonyms": {k: list(v) for k, v in cfg.synonyms.items()},
     }

@@ -41,6 +41,23 @@ from typing import Callable, Optional
 # banking. Pass `field_defs={field: description}` to override.
 FIELD_DEFS: dict[str, str] = {}
 
+# Domain-neutral default. The JSON output contract lives in the USER message
+# (always sent), so this can be safely overridden without breaking the format.
+# Override per matcher (system_prompt=...), or per config (ai_system_prompt),
+# or via TABULARMAPPER_AI_SYSTEM_PROMPT.
+DEFAULT_SYSTEM_PROMPT = (
+    "You map spreadsheet COLUMNS to a fixed schema. You are given only column "
+    "headers and structural metadata (data types, fill rates, sign, and which "
+    "columns are mutually exclusive) — never the actual cell values. Use the "
+    "header wording, the field descriptions provided, and these structural hints. "
+    "Two mutually-exclusive numeric columns are often a directional pair (e.g. "
+    "debit/credit, in/out, paid/received); decide direction from the header "
+    "wording. A single signed numeric column (has negative values, not mutually "
+    "exclusive with another numeric column) is usually a single net amount. "
+    "Respond with ONLY a JSON object mapping the column index (as a string) to "
+    "one field name, or null if a column matches no field. Do not invent fields."
+)
+
 
 # --------------------------------------------------------------------------
 # Structural profiling — deterministic, no cell contents leave this function
@@ -141,6 +158,7 @@ class OpenAICompatibleMatcher:
                  include_samples: bool = False,
                  timeout: float = 30.0,
                  temperature: float = 0.0,
+                 system_prompt: Optional[str] = None,
                  transport: Optional[Callable[[list], str]] = None):
         self.base_url = (base_url or os.getenv("OPENAI_BASE_URL")
                          or "https://api.openai.com/v1").rstrip("/")
@@ -150,6 +168,11 @@ class OpenAICompatibleMatcher:
         self.include_samples = include_samples
         self.timeout = timeout
         self.temperature = temperature
+        # System prompt: explicit arg > env > domain-neutral default. The user
+        # message always carries the JSON-format contract, so overriding this is safe.
+        self.system_prompt = (system_prompt
+                              or os.getenv("TABULARMAPPER_AI_SYSTEM_PROMPT")
+                              or DEFAULT_SYSTEM_PROMPT)
         self._transport = transport  # for tests / custom clients
 
     # -- prompt construction (structure only) --
@@ -168,19 +191,7 @@ class OpenAICompatibleMatcher:
                 f"type={p['dtype']} fill={p['fill_rate']}{neg}{excl}"
             )
         cols = "\n".join(col_lines)
-        system = (
-            "You map bank-statement spreadsheet COLUMNS to a fixed schema. "
-            "You are given only column headers and structural metadata (data "
-            "types, fill rates, sign, and which columns are mutually exclusive) "
-            "— never the actual transaction values. Use the header wording plus "
-            "these structural hints. Two money columns that are mutually "
-            "exclusive are almost always a debit/credit pair; decide direction "
-            "from the header wording. A single signed money column (has negative "
-            "values, not mutually exclusive with another money column) is "
-            "'amount'. Respond with ONLY a JSON object mapping the column index "
-            "(as a string) to one field name, or null if a column matches no "
-            "field. Do not invent fields."
-        )
+        system = self.system_prompt
         user = (
             f"Allowed fields:\n{field_lines}\n\n"
             f"Columns:\n{cols}\n\n"

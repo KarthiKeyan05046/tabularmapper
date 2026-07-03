@@ -262,6 +262,33 @@ def test_ai_matcher_sends_no_real_data():
     assert "Outgoing" in blob and "mutually-exclusive" in blob
 
 
+def test_ai_system_prompt_is_configurable():
+    """Default is domain-neutral; an explicit prompt overrides it, and the
+    JSON-format contract in the user message survives either way."""
+    from tabularmapper.ai_matcher import DEFAULT_SYSTEM_PROMPT
+    profs = [{"index": 0, "name": "Date", "dtype": "date", "fill_rate": 1.0,
+              "has_negative": False, "mutually_exclusive_with": []}]
+
+    d = OpenAICompatibleMatcher(api_key="x")
+    sys_default = d._build_messages(profs, ["date"])[0]["content"]
+    assert "bank-statement" not in sys_default
+    assert sys_default == DEFAULT_SYSTEM_PROMPT
+
+    c = OpenAICompatibleMatcher(api_key="x", system_prompt="MAP PRODUCTS ONLY.")
+    msgs = c._build_messages(profs, ["date"])
+    assert msgs[0]["content"] == "MAP PRODUCTS ONLY."
+    assert "Return JSON" in msgs[1]["content"] and "exactly once" in msgs[1]["content"]
+
+
+def test_ai_system_prompt_from_config():
+    from tabularmapper import config_from_dict
+    from tabularmapper.schema import config_to_dict
+    cfg = config_from_dict({"output_schema": [{"field": "date", "type": "date"}],
+                            "synonyms": {}, "ai_system_prompt": "CUSTOM"})
+    assert cfg.ai_system_prompt == "CUSTOM"
+    assert config_to_dict(cfg)["ai_system_prompt"] == "CUSTOM"
+
+
 def test_ai_matcher_graceful_on_transport_error():
     """A network/API failure must not crash — columns just stay unmapped."""
     def boom(_m):

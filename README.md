@@ -316,6 +316,19 @@ prefer a `gpt-4o-mini`/`gemini-flash`/`haiku`-class model (or Kimi K2). Because 
 AI only runs on unknown layouts and the result is cached, cost is negligible, so
 optimize for reliability, not price.
 
+### Customizing the AI system prompt
+
+The matcher's system prompt is domain-neutral by default. To tune it for your domain,
+set it three ways (highest priority first): the `system_prompt=` arg to
+`OpenAICompatibleMatcher`, an `ai_system_prompt` field in your config JSON, or the
+`TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output contract lives in the user
+message (always sent), so overriding the system prompt is safe.
+
+```json
+{ "output_schema": [...], "synonyms": {...},
+  "ai_system_prompt": "You map e-commerce product export columns to a fixed schema. ..." }
+```
+
 ## Self-learning
 
 When the AI resolves a new header, it's remembered so the next statement from that

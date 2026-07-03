@@ -12,7 +12,15 @@ Nothing yet.
 ## [1.0.5] — 2026-07-02
 
 ### Added
-- **Config-builder web page.** `GET /mapper/config` serves a self-contained
+- **Configurable AI system prompt.** Override the matcher's system prompt via
+  `OpenAICompatibleMatcher(system_prompt=...)`, an `ai_system_prompt` field in the
+  config JSON, or the `TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output
+  contract stays in the user message, so overriding is safe.
+- **Config-builder web page.**
+
+### Changed
+- The AI matcher's default system prompt is now **domain-neutral** (no longer
+  bank-specific), so it works for any schema out of the box. `GET /mapper/config` serves a self-contained
   HTML page (`tabularmapper/static/index.html`) for designing an output schema —
   fields, types, synonyms, descriptions, `critical_fields`/`require_any`/
   `reconcile` — with a live `config.json` preview plus copy/download. Bundled in
