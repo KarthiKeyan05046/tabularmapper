@@ -44,7 +44,7 @@ from .schema import (
 )
 from .stores import open_store
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 __all__ = [
     "process_file",
