@@ -246,6 +246,19 @@ export OPENAI_MODEL=gpt-4o-mini                     # optional
 
 `GET /mapper/health` will then report `"ai_enabled": true`.
 
+**Want a provider that isn't OpenAI (Anthropic, Gemini, Kimi)?** Don't add an SDK —
+point the same three env vars at [OpenRouter](https://openrouter.ai), which serves
+every model through the OpenAI API the matcher already speaks:
+
+```bash
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_API_KEY=sk-or-...
+OPENAI_MODEL=google/gemini-2.5-flash   # or anthropic/claude-3.5-haiku, moonshotai/kimi-k2, ...
+```
+
+Use a capable model (a `gpt-4o-mini`/`gemini-flash`/`haiku`-class model or Kimi K2) —
+small 7B models are unreliable at column mapping.
+
 ---
 
 ## 8. The cache (so it's fast and cheap)

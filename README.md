@@ -298,6 +298,24 @@ res = process_file("new_bank.xlsx", table_matcher=OpenAICompatibleMatcher())
 Works with OpenAI, Azure, Together, Groq, or a local vLLM/Ollama endpoint via
 `OPENAI_BASE_URL`.
 
+### Any provider (Anthropic, Gemini, Kimi, …) via OpenRouter
+
+The matcher speaks the OpenAI `/chat/completions` API, and [OpenRouter](https://openrouter.ai)
+exposes **every** major model through exactly that interface — so you can use
+Anthropic, Gemini, Kimi K2, DeepSeek, etc. with **no extra dependency** and no code
+change. Just point the three env vars at OpenRouter and pick a model:
+
+```bash
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_API_KEY=sk-or-...
+OPENAI_MODEL=google/gemini-2.5-flash      # or anthropic/claude-3.5-haiku, moonshotai/kimi-k2, openai/gpt-4o-mini
+```
+
+Model matters for this task: a small local 7B model is unreliable at column mapping —
+prefer a `gpt-4o-mini`/`gemini-flash`/`haiku`-class model (or Kimi K2). Because the
+AI only runs on unknown layouts and the result is cached, cost is negligible, so
+optimize for reliability, not price.
+
 ## Self-learning
 
 When the AI resolves a new header, it's remembered so the next statement from that
