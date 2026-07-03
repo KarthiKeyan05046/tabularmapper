@@ -9,13 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [1.0.6] — 2026-07-03
+## [1.0.7] — 2026-07-03
 
 ### Added
-- **Configurable AI system prompt.** Override the matcher's system prompt via
-  `OpenAICompatibleMatcher(system_prompt=...)`, an `ai_system_prompt` field in the
-  config JSON, or the `TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output
-  contract stays in the user message, so overriding is safe.
 - **`TABULARMAPPER_AI_FILL`** controls the AI trigger. New default **`all`**: when
   AI is enabled, it fills **any** column the deterministic pass left unmapped (so
   non-critical columns like a reference number get an AI attempt too), not just
@@ -25,6 +21,14 @@ Nothing yet.
 ### Changed
 - **AI trigger default is now `all`** (was: critical-gap only). If AI is enabled,
   expect it to also resolve non-critical leftovers on new layouts.
+
+## [1.0.6] — 2026-07-03
+
+### Added
+- **Configurable AI system prompt.** Override the matcher's system prompt via
+  `OpenAICompatibleMatcher(system_prompt=...)`, an `ai_system_prompt` field in the
+  config JSON, or the `TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output
+  contract stays in the user message, so overriding is safe.
 
 ### Changed
 - The AI matcher's **default system prompt is now domain-neutral** (no longer
@@ -130,7 +134,8 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.3...v1.0.5
 [1.0.3]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.2...v1.0.3
