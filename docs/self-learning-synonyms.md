@@ -1,8 +1,15 @@
-# Self-Learning Column Mapping — Design, Plan & README
+# Self-Learning Column Mapping — Design & Plan (historical)
 
-Goal: stop hand-editing the `SYNONYMS` dict in `bank_mapper.py`. Make the
-header→field vocabulary **external, data-driven, and self-growing**, so a new
-bank format teaches the system once and never needs a code change.
+> **Note:** this is the original design document. The feature shipped as
+> `tabularmapper/learn.py` (`LearnStore`, `learn_from_result`, `harvest_folder`)
+> using the `open_store(url)` convention — **not** the `synonyms.py`/`synonyms.json`
+> described in the plan sections below. For **current usage**, see
+> [`how-it-works.md`](how-it-works.md) §10 and the README. The "Shipped API"
+> block just below is accurate; the plan sections (§1–11) are kept for context.
+
+Goal: stop hand-editing seed synonyms in code. Make the header→field vocabulary
+**external, data-driven, and self-growing**, so a new format teaches the system
+once and never needs a code change.
 
 ---
 
@@ -13,7 +20,7 @@ below in two ways, both improvements:
 
 - **Storage uses the `open_store(url)` convention** (see `stores.py`), not a
   bespoke `synonyms.json`. Learned synonyms live in the same SQLite/Redis/Postgres
-  backend as the cache — concurrency-safe, selected by `BANK_MAPPER_LEARN_STORE`.
+  backend as the cache — concurrency-safe, selected by `TABULARMAPPER_LEARN_STORE`.
 - **Config ↔ learned split is enforced:** the config (`config.json`,
   output_schema + seed synonyms) is read-only from S3/URL; the *learned* half is
   the writeable store. Effective vocabulary at match time = seed + learned, with
@@ -22,10 +29,9 @@ below in two ways, both improvements:
 Shipped API:
 
 ```python
-from learn import LearnStore, learn_from_result
-from bank_mapper import apply_learned, process_file
+from tabularmapper import LearnStore, learn_from_result, apply_learned, process_file
 
-store = LearnStore()                    # BANK_MAPPER_LEARN_STORE or sqlite default
+store = LearnStore()                    # TABULARMAPPER_LEARN_STORE or in-memory default
 apply_learned(store)                    # activate learned synonyms (call at startup)
 
 # per statement: process + learn in one call
@@ -40,9 +46,8 @@ store.stats()                           # {applied, pending, conflicts}
 ```
 
 FastAPI: the router auto-loads the store at startup, learns on every `/map`, and
-exposes `GET /statements/learn/pending`, `POST /statements/learn/approve`,
-`POST /statements/learn/reject`. Set `auto_apply_gated=True` on `LearnStore` for
-a fully unattended loop (no review queue).
+exposes `GET /mapper/learn/pending`, `POST /mapper/learn/approve`,
+`POST /mapper/learn/reject` (prefix configurable via `TABULARMAPPER_ROUTE_PREFIX`).
 
 Not yet built from the plan below: the `harvest_folder` bootstrap (§7).
 

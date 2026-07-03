@@ -93,6 +93,10 @@ That's the whole integration. **Do not add your own cache manager** — the
 4. review gate         missing/uncertain critical column -> needs_review = True
 ```
 
+For a plain-language walkthrough (mental model, the config file, when the AI runs,
+caching, troubleshooting, known limitations), see
+**[docs/how-it-works.md](docs/how-it-works.md)**.
+
 ## The result object
 
 `process_file` / `process_stream` return a `ProcessResult`:
@@ -126,8 +130,9 @@ All are optional; sensible defaults apply.
 | `TABULARMAPPER_CONFIG` | *(none — required)* | output template + synonyms JSON (file / `https://` / `s3://`) |
 | `TABULARMAPPER_ROUTE_PREFIX` | `/mapper` | FastAPI router path prefix |
 | `TABULARMAPPER_THRESHOLD` | `80` | fuzzy-accept gate (0–100); raise it to push borderline fuzzy matches to the AI matcher |
+| `TABULARMAPPER_AI_SYSTEM_PROMPT` | *(built-in default)* | override the AI matcher's system prompt (or set `ai_system_prompt` in the config) |
 | `OPENAI_API_KEY` | *(unset → AI off)* | enables the AI column matcher |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint (point at OpenRouter for Anthropic/Gemini/Kimi) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | model name |
 
 ```bash

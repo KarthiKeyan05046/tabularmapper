@@ -259,6 +259,13 @@ OPENAI_MODEL=google/gemini-2.5-flash   # or anthropic/claude-3.5-haiku, moonshot
 Use a capable model (a `gpt-4o-mini`/`gemini-flash`/`haiku`-class model or Kimi K2) —
 small 7B models are unreliable at column mapping.
 
+**Tuning the prompt.** The matcher ships a domain-neutral system prompt with
+conservative, bounded rules (semantics over string-matching; unresolved columns →
+`null`; don't over-map). To adapt it to your domain, set — highest priority first —
+`OpenAICompatibleMatcher(system_prompt=...)`, an `ai_system_prompt` field in your
+config JSON, or the `TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output contract
+lives in the user message, so overriding the system prompt is always safe.
+
 ---
 
 ## 8. The cache (so it's fast and cheap)
@@ -328,8 +335,9 @@ cheaper the more you use it. Sensitive fields (like debit/credit) are held in a
 | `TABULARMAPPER_LEARN_STORE` | Where learned synonyms live | `memory://` |
 | `TABULARMAPPER_ROUTE_PREFIX` | API route prefix | `/mapper` |
 | `TABULARMAPPER_THRESHOLD` | Fuzzy-accept gate (0–100); raise it to route borderline matches to AI | `80` |
+| `TABULARMAPPER_AI_SYSTEM_PROMPT` | Override the AI matcher's system prompt (or set `ai_system_prompt` in the config) | built-in default |
 | `OPENAI_API_KEY` | Enables the AI matcher | unset (AI off) |
-| `OPENAI_BASE_URL` | AI endpoint | OpenAI's |
+| `OPENAI_BASE_URL` | AI endpoint (point at OpenRouter for Anthropic/Gemini/Kimi) | OpenAI's |
 | `OPENAI_MODEL` | AI model name | `gpt-4o-mini` |
 
 Remember: in a plain script or the CLI these can come from `.env`, but **in FastAPI you
@@ -349,6 +357,22 @@ must `load_dotenv()` yourself** or export them in the environment.
 | AI never runs | No `OPENAI_API_KEY`, or the rules already filled the critical fields, or it's a cached layout | Set the key; AI only fires on a **critical** gap in an uncached layout |
 | `needs_review` is `True` | A critical field is missing or a column is low-confidence | Read `review_reasons`; usually a missing synonym |
 | Changed the config, old mapping still used | The cache is scoped to the schema, but a stale process may hold the old one | Restart the app / clear the cache |
+
+---
+
+## 13. Known limitations
+
+- **One active config per process.** `configure()` sets a single global config, so
+  one running app maps one schema. To serve two domains (e.g. bank statements *and*
+  employee records) today you'd run two app instances with different configs.
+  Multi-schema-in-one-app (select a named config per request, e.g. `?schema=bank`)
+  is planned — it's a real refactor, not a flag, because the engine currently reads
+  one global config. Until then, one schema per deployment.
+- **AI accuracy tracks the model.** A small local ≤8B model is unreliable at column
+  mapping; use a `gpt-4o-mini`/`gemini-flash`/`haiku`-class model or Kimi K2. Rich
+  synonyms keep AI off the critical path so the model rarely matters.
+- **Tabular `.xlsx` only.** This maps spreadsheet columns; it is not OCR for scanned
+  PDFs or a parser for free-text statements.
 
 ---
 
