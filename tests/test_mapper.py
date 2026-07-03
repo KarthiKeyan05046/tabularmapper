@@ -289,6 +289,49 @@ def test_ai_system_prompt_from_config():
     assert config_to_dict(cfg)["ai_system_prompt"] == "CUSTOM"
 
 
+def test_ai_fill_all_is_default(monkeypatch, tmp_path):
+    """Default TABULARMAPPER_AI_FILL='all': AI fires on ANY unmapped column and
+    fills non-critical leftovers. 'critical' restricts it to critical gaps."""
+    import json as _J
+    from openpyxl import Workbook
+    from tabularmapper import configure, config_from_dict
+
+    configure(config_from_dict({
+        "output_schema": [{"field": "date", "type": "date"},
+                          {"field": "reference", "type": "string"},
+                          {"field": "debit", "type": "currency"},
+                          {"field": "credit", "type": "currency"}],
+        "synonyms": {"date": ["date"], "reference": ["reference"],
+                     "debit": ["debit"], "credit": ["credit"]},
+        "critical_fields": ["date", "debit", "credit"]}))
+
+    wb = Workbook(); ws = wb.active
+    ws.append(["Date", "Ref/Chq No", "Debit", "Credit"])   # Ref/Chq No won't match 'reference'
+    ws.append(["01-06-2025", "X1", "100", ""])
+    p = str(tmp_path / "s.xlsx"); wb.save(p)
+
+    calls = {"n": 0}
+    def transport(_m):
+        calls["n"] += 1
+        return _J.dumps({"1": "reference"})
+    mk = lambda: OpenAICompatibleMatcher(api_key="x", transport=transport)
+
+    # default (env absent) -> AI fires and fills the non-critical reference column
+    monkeypatch.delenv("TABULARMAPPER_AI_FILL", raising=False)
+    r = process_file(p, table_matcher=mk())
+    f = {m.raw_header: m for m in r.column_maps}
+    assert f["Ref/Chq No"].field == "reference" and f["Ref/Chq No"].method == "ai"
+    assert calls["n"] == 1
+
+    # critical -> date/debit/credit already mapped => no gap => AI never called
+    calls["n"] = 0
+    monkeypatch.setenv("TABULARMAPPER_AI_FILL", "critical")
+    r = process_file(p, table_matcher=mk())
+    f = {m.raw_header: m for m in r.column_maps}
+    assert f["Ref/Chq No"].field is None
+    assert calls["n"] == 0
+
+
 def test_ai_matcher_graceful_on_transport_error():
     """A network/API failure must not crash — columns just stay unmapped."""
     def boom(_m):

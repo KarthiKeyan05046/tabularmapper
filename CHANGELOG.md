@@ -16,6 +16,15 @@ Nothing yet.
   `OpenAICompatibleMatcher(system_prompt=...)`, an `ai_system_prompt` field in the
   config JSON, or the `TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output
   contract stays in the user message, so overriding is safe.
+- **`TABULARMAPPER_AI_FILL`** controls the AI trigger. New default **`all`**: when
+  AI is enabled, it fills **any** column the deterministic pass left unmapped (so
+  non-critical columns like a reference number get an AI attempt too), not just
+  critical gaps. Set `critical` for the previous behaviour (AI only on a missing
+  critical field). AI still runs only on uncached layouts, and the result caches.
+
+### Changed
+- **AI trigger default is now `all`** (was: critical-gap only). If AI is enabled,
+  expect it to also resolve non-critical leftovers on new layouts.
 
 ### Changed
 - The AI matcher's **default system prompt is now domain-neutral** (no longer

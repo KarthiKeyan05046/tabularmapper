@@ -130,6 +130,7 @@ All are optional; sensible defaults apply.
 | `TABULARMAPPER_CONFIG` | *(none — required)* | output template + synonyms JSON (file / `https://` / `s3://`) |
 | `TABULARMAPPER_ROUTE_PREFIX` | `/mapper` | FastAPI router path prefix |
 | `TABULARMAPPER_THRESHOLD` | `80` | fuzzy-accept gate (0–100); raise it to push borderline fuzzy matches to the AI matcher |
+| `TABULARMAPPER_AI_FILL` | `all` | `all` = AI fills **any** column the rules left unmapped; `critical` = only when a critical field is missing |
 | `TABULARMAPPER_AI_SYSTEM_PROMPT` | *(built-in default)* | override the AI matcher's system prompt (or set `ai_system_prompt` in the config) |
 | `OPENAI_API_KEY` | *(unset → AI off)* | enables the AI column matcher |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint (point at OpenRouter for Anthropic/Gemini/Kimi) |

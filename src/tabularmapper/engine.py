@@ -23,6 +23,7 @@ import csv
 import datetime as _dt
 import io
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Literal, Optional, Union
@@ -738,6 +739,19 @@ def _has_critical_gap(col_maps: list[ColumnMap]) -> bool:
     return False
 
 
+def _should_ask_ai(col_maps: list[ColumnMap]) -> bool:
+    """Whether to consult the AI matcher, per TABULARMAPPER_AI_FILL:
+      - "all" (default): fire if ANY column is unmapped, so the AI fills
+        non-critical leftovers (reference, secondary columns) too — not just
+        critical gaps. A genuinely not-in-schema column just comes back null.
+      - "critical": fire only when a critical field is missing (cheapest).
+    """
+    mode = os.getenv("TABULARMAPPER_AI_FILL", "all").strip().lower()
+    if mode == "critical":
+        return _has_critical_gap(col_maps)
+    return any(m.field is None for m in col_maps)   # "all" (default)
+
+
 def merge_ai_mapping(col_maps: list[ColumnMap], ai: dict) -> list[ColumnMap]:
     """Overlay an AI {col_index: field} mapping onto deterministic col_maps.
 
@@ -823,8 +837,12 @@ def _run(rows: list[list], source_label: str, out_path, llm_fallback,
     if col_maps is None:
         col_maps = map_columns(header, sample_rows, llm_fallback=llm_fallback,
                                threshold=threshold)
-        # Unknown layout? Ask the AI to map the whole table (structure only).
-        if table_matcher is not None and _has_critical_gap(col_maps):
+        # Ask the AI to map the whole table (structure only) when the rules left
+        # something unresolved. Trigger depends on TABULARMAPPER_AI_FILL:
+        #   "all" (default) -> fire if ANY column is unmapped (fills reference,
+        #                      secondary columns, etc. — not just critical gaps)
+        #   "critical"      -> fire only when a critical field is missing
+        if table_matcher is not None and _should_ask_ai(col_maps):
             ai = table_matcher(header, rows[hc.index + 1: hc.index + 46],
                                list(ALLOWED_FIELDS))
             if ai:
