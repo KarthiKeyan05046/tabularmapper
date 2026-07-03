@@ -225,6 +225,12 @@ AI is a **last resort**, not the default. It fires **only** when all of these ar
 So if your synonyms already cover a file's columns, **AI never runs** — it's free and
 fully deterministic. AI is reserved for genuinely new layouts.
 
+> **AI is not a catch-all for every unmapped column.** It only fires to fill a missing
+> **critical** field. If a column comes back `field: null` and that field isn't in your
+> `critical_fields`, AI was **never even asked about it** — there was no gap to trigger
+> it. So a non-critical column you care about won't get rescued by AI; give it a synonym,
+> or mark the field critical. (See §12.)
+
 **Privacy:** when it does run, the tool computes a *structural profile* of each column
 locally (data type, how often it's filled, whether values go negative, which columns
 are never filled together) and sends **only that plus the header words** to the model.
@@ -250,6 +256,12 @@ touches the AI). This is automatic.
 
 - **When it saves:** only when the result is clean (`needs_review == False`). It refuses
   to cache a shaky guess, so a bad mapping can never get "promoted" to trusted.
+- **A subtle trap with unmapped columns:** a null **critical** field trips
+  `needs_review`, so it's never cached — good. But a null **non-critical** field does
+  *not* trip review, so the whole mapping (including that null) *can* get cached. Next
+  time it's replayed as null, and because the field isn't critical, AI won't re-fire for
+  it either — the column is stuck null. Fix: if you care about that field, mark it
+  `critical` or give it a synonym; don't leave it non-critical and hope AI catches it.
 - **Where it saves:** controlled by one environment variable, `TABULARMAPPER_CACHE`.
   Default is `memory://` (in-memory, nothing written to disk). Point it at a database to
   make it durable and shared:
@@ -317,9 +329,11 @@ must `load_dotenv()` yourself** or export them in the environment.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Output has default/empty fields | No config loaded (default is empty) | `configure("config.json")` or `--preset bank` |
-| A column comes back `field: null` | No synonym close enough | Add the header wording to that field's `synonyms` |
+| A column is `field: null` — **even with AI on** | No synonym close enough, **and** AI didn't rescue it (the field isn't `critical`, so AI was never asked; or AI ran but the column isn't in your schema; or the AI call failed) | Add the header wording to that field's `synonyms` (reliable, free), or mark the field `critical` so a gap triggers AI. If the column isn't a field you want, null is correct. |
+| "But AI should map it!" | AI only fires to fill a **missing critical field** — not every unmapped column | Mark the field `critical` **and** give it a `description`; confirm `ai_enabled: true`; use a capable model |
+| A `null` column keeps coming back, AI never re-fires | It was cached. Non-critical nulls get cached (they don't trip review); the cache hit then skips AI | Mark the field `critical` (critical nulls are never cached) or add a synonym; or clear the cache |
 | Cache "isn't working" | Wrong env name, or `.env` not loaded in FastAPI | Use `TABULARMAPPER_CACHE` (not `BANK_MAPPER_*`) and call `load_dotenv()` |
-| AI never runs | No `OPENAI_API_KEY`, or the rules already filled the critical fields, or it's a cached layout | Set the key; AI only fires on unknown layouts |
+| AI never runs | No `OPENAI_API_KEY`, or the rules already filled the critical fields, or it's a cached layout | Set the key; AI only fires on a **critical** gap in an uncached layout |
 | `needs_review` is `True` | A critical field is missing or a column is low-confidence | Read `review_reasons`; usually a missing synonym |
 | Changed the config, old mapping still used | The cache is scoped to the schema, but a stale process may hold the old one | Restart the app / clear the cache |
 
