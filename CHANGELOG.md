@@ -9,25 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [1.0.5] — 2026-07-02
+## [1.0.6] — 2026-07-03
 
 ### Added
 - **Configurable AI system prompt.** Override the matcher's system prompt via
   `OpenAICompatibleMatcher(system_prompt=...)`, an `ai_system_prompt` field in the
   config JSON, or the `TABULARMAPPER_AI_SYSTEM_PROMPT` env var. The JSON-output
   contract stays in the user message, so overriding is safe.
-- **Config-builder web page.**
 
 ### Changed
-- The AI matcher's default system prompt is now **domain-neutral** (no longer
-  bank-specific), so it works for any schema out of the box. `GET /mapper/config` serves a self-contained
+- The AI matcher's **default system prompt is now domain-neutral** (no longer
+  bank-specific) and a structured, bounded rule set: header-semantics-first,
+  mutual-exclusivity for paired fields, unresolved abbreviations → `null`,
+  derived/duplicate columns → `null`, and a conservative "map only what the
+  evidence supports; a `null` is expected, not a failure" stance with single-pass
+  reasoning. Also fixed an impossible "flag explicitly" instruction (the contract
+  is field-or-`null`, so there is no flag channel).
+
+### Docs
+- Documented using any provider (Anthropic/Gemini/Kimi) via OpenRouter — one
+  `base_url`, no new dependency. Removed the unused `ai_adapter.py`. Clarified
+  `field: null` + AI + cache behavior in `how-it-works.md`.
+
+## [1.0.5] — 2026-07-02
+
+### Added
+- **Config-builder web page.** `GET /mapper/config` serves a self-contained
   HTML page (`tabularmapper/static/index.html`) for designing an output schema —
   fields, types, synonyms, descriptions, `critical_fields`/`require_any`/
   `reconcile` — with a live `config.json` preview plus copy/download. Bundled in
   the wheel via package-data, so it works from a pip install, not just a checkout.
   Supports importing a `config.json` file, and a **Load current** button that
-  seeds the builder from the mapper's active config via the new
-  `GET /mapper/config.json` endpoint.
+  seeds the builder from the active config via the new `GET /mapper/config.json`
+  endpoint.
 
 ## [1.0.3] — 2026-07-02
 
@@ -107,7 +121,8 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.3...v1.0.5
 [1.0.3]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.1...v1.0.2
