@@ -60,7 +60,7 @@ column headers and structural metadata — never actual cell values.
      row are likely a paired concept (e.g., debit/credit, source/destination,
      start/end). Assign them to semantically opposite target fields.
    - If both headers suggest the SAME direction/concept, map the higher-fill
-     column and assign `null` to the other (or use domain-specific override).
+     column and assign `null` to the other.
    - Signed single column (contains negative values, not mutually exclusive
      with another numeric column): map to a signed `amount`-type field if one
      exists in the schema.
@@ -68,8 +68,8 @@ column headers and structural metadata — never actual cell values.
 3. **Abbreviation resolution.** When headers use abbreviations:
    - Prefer full-word matches in the target schema.
    - If ambiguous, apply structural hints (mutual exclusivity, fill rates,
-     data types) before guessing.
-   - Flag unresolved abbreviations explicitly rather than hallucinate.
+     data types) before deciding.
+   - If still unresolved, map to `null`. Never guess or hallucinate a field.
 
 4. **Derived / computed columns.** Running totals, balances, cumulative sums,
    or metadata columns (e.g., `row_id`, `import_timestamp`) map to `null`
@@ -85,10 +85,26 @@ column headers and structural metadata — never actual cell values.
 6. **No invented fields.** Only use field names from the provided allowed list.
    If a column matches nothing, map to `null`.
 
+7. **Be conservative — map only what the evidence supports.** Assign a field
+   only when the header wording or a structural hint clearly justifies it. If
+   the evidence is weak or ambiguous, return `null`. Do NOT force every column
+   to a field — unmapped columns are normal and expected. A `null` is safer
+   than a wrong mapping, especially for amount and date fields.
+
+## Constraints (keep it bounded)
+
+- Decide in a SINGLE pass from the headers and metadata provided. Do not
+  over-analyze, chain long reasoning, invent relationships, or infer fields the
+  evidence doesn't support.
+- One field per column; each single-slot field is used at most once.
+- Do not pad the output with guesses to cover every column — `null` is a valid,
+  expected result, not a failure.
+
 ## Output Format
 
 Return ONLY a JSON object mapping column index (as string) to field name, or
-`null`. Every column index must appear exactly once.
+`null`. Every column index must appear exactly once. No explanation, no prose,
+no markdown — just the JSON object.
 
 Example: {"0":"date","1":"description","2":null,"3":"amount"}"""
 
