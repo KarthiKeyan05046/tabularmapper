@@ -35,3 +35,4 @@ samples/
 # Large model weights (~90MB) — distribute out-of-band, not in git.
 # Comment this out if you DO want to commit the model.
 models/*.onnx
+test_statements/*
