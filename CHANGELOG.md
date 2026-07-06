@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.9] — 2026-07-06
+
+### Added
+- **Bundled test-mapping page at `GET /test`.** A self-contained web page (served
+  from `tabularmapper/static/test.html`, like the config builder at `/config`) to
+  try the mapper against a live server: drop an `.xlsx`, tune the fuzzy threshold,
+  and inspect the result — a **schema-coverage** panel showing which expected
+  fields were satisfied (and from which source column) versus missing, a
+  **column-mapping** table that spells out *why* each unmapped column was skipped
+  (blank header / not in schema / duplicate / no confident match, with the best
+  score), the mapped rows, a **learning queue** to approve/reject pending
+  debit/credit synonyms inline, an **AI-ready** status indicator, and a
+  **Download mapped `.xlsx`** button. The page targets the API relative to its own
+  URL, so it works under any `TABULARMAPPER_ROUTE_PREFIX` with no configuration.
+
 ## [1.0.8] — 2026-07-03
 
 ### Fixed

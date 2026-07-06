@@ -76,7 +76,7 @@ from fastapi import FastAPI
 from tabularmapper.api import router, lifespan
 
 app = FastAPI(lifespan=lifespan)              # lifespan wires cache + config + AI for you
-app.include_router(router)                    # -> POST /mapper/map, GET /mapper/health
+app.include_router(router)                    # -> POST /mapper/map, GET /mapper/health, GET /mapper/test
 ```
 
 That's the whole integration. **Do not add your own cache manager** — the
@@ -239,6 +239,7 @@ app.include_router(router)
 |---|---|---|
 | `POST` | `/mapper/map` | upload an `.xlsx`, get the mapping + rows (JSON) |
 | `GET` | `/mapper/health` | `{status, ai_enabled}` |
+| `GET` | `/mapper/test` | test-mapping web page — drop an `.xlsx` and inspect the mapping (schema coverage, per-column reasons, learn queue, download) |
 | `GET` | `/mapper/config` | config-builder web page — design a schema, export `config.json` |
 | `GET` | `/mapper/config.json` | the mapper's currently-active config as JSON (the page's "Load current" uses this) |
 | `GET` | `/mapper/learn/pending` | debit/credit synonyms awaiting approval |

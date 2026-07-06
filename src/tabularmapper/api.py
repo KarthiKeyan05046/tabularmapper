@@ -155,6 +155,20 @@ async def config_page() -> HTMLResponse:
         raise HTTPException(status_code=404, detail="config builder page not found")
 
 
+async def test_page() -> HTMLResponse:
+    """Serve the self-contained test-mapping page bundled at
+    tabularmapper/static/test.html. Upload a spreadsheet and inspect the mapping
+    (schema coverage, per-column reasons, transactions, learn queue) live against
+    this server. The page targets the API relative to its own URL, so it works
+    under any route prefix without configuration."""
+    try:
+        resource = files("tabularmapper").joinpath("static", "test.html")
+        with as_file(resource) as path:
+            return HTMLResponse(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ModuleNotFoundError):
+        raise HTTPException(status_code=404, detail="test page not found")
+
+
 async def active_config() -> dict:
     """The config the mapper is currently using (from TABULARMAPPER_CONFIG or a
     manual configure()). The builder page fetches this to seed itself so you can
@@ -264,6 +278,8 @@ def make_router(prefix: Optional[str] = None, tags: Optional[list] = None) -> AP
     r = APIRouter(prefix=prefix.rstrip("/"), tags=tags or ["mapper"])
     r.add_api_route("/health", health, methods=["GET"])
     r.add_api_route("/config", config_page, methods=["GET"],
+                    response_class=HTMLResponse, include_in_schema=False)
+    r.add_api_route("/test", test_page, methods=["GET"],
                     response_class=HTMLResponse, include_in_schema=False)
     r.add_api_route("/config.json", active_config, methods=["GET"])
     r.add_api_route("/map", map_statement, methods=["POST"], response_model=MapResponse)

@@ -157,6 +157,10 @@ This gives you ready-made endpoints (default prefix `/mapper`):
 
 - `POST /mapper/map` — upload an `.xlsx`, get the clean rows back.
 - `GET  /mapper/health` — is it up, is AI enabled?
+- `GET  /mapper/test` — a bundled web page to drop an `.xlsx` and inspect the
+  mapping live: schema coverage, why each column was skipped, the mapped rows, the
+  learn queue, and a download button.
+- `GET  /mapper/config` — a bundled web page to design a schema and export `config.json`.
 - `GET/POST /mapper/learn/*` — the self-learning queue (see §10).
 
 Upload and choose your output shape with `?format=`:

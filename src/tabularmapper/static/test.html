@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabular Mapper — Test Mapping</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            DEFAULT: '#ED0E4C',
+                            dark: '#C90B40',
+                            tint: '#FDE7EE',
+                        },
+                    },
+                },
+            },
+        };
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: #f7f8fa;
+        }
+        .code-font {
+            font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d4d7dd; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b9bdc6; }
+        .dropzone.drag { border-color: #ED0E4C; background: #FDE7EE; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand text-white">
+                <i class="fa-solid fa-table-cells"></i>
+            </span>
+            <div>
+                <h1 class="text-lg font-semibold leading-tight">Tabular Mapper</h1>
+                <p class="text-xs text-slate-500 leading-tight">Test mapping — upload a spreadsheet and inspect the result</p>
+            </div>
+            <span id="aiStatus"
+                  class="ml-auto inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-slate-100 text-slate-500">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <span>Checking AI…</span>
+            </span>
+            <a id="cfgLink" href="#" class="text-sm text-slate-500 hover:text-brand">
+                <i class="fa-solid fa-sliders mr-1"></i>Config builder
+            </a>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+
+        <!-- Uploader + controls -->
+        <section class="bg-white rounded-xl border border-slate-200 p-6">
+            <div id="dropzone"
+                 class="dropzone border-2 border-dashed border-slate-300 rounded-lg px-6 py-10 text-center cursor-pointer transition-colors">
+                <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400"></i>
+                <p class="mt-3 text-sm text-slate-600">
+                    <span class="font-semibold text-brand">Choose a file</span> or drag &amp; drop it here
+                </p>
+                <p class="mt-1 text-xs text-slate-400">.xlsx or .xls spreadsheets</p>
+                <p id="fileName" class="mt-3 text-sm font-medium text-slate-800 hidden"></p>
+                <input id="fileInput" type="file" accept=".xlsx,.xls" class="hidden">
+            </div>
+
+            <div class="mt-6 flex flex-col sm:flex-row sm:items-end gap-6">
+                <div class="flex-1">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                        Fuzzy-accept threshold
+                        <span class="normal-case text-slate-400 font-normal">— higher = stricter, pushes borderline matches to AI</span>
+                    </label>
+                    <div class="flex items-center gap-4">
+                        <input id="threshold" type="range" min="0" max="100" value="80"
+                               class="flex-1 accent-brand">
+                        <input id="thresholdNum" type="number" min="0" max="100" value="80"
+                               class="w-20 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-center code-font">
+                    </div>
+                </div>
+                <button id="mapBtn"
+                        class="bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-6 py-2.5 rounded-lg text-sm inline-flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>Map file</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Expected output schema -->
+        <section class="bg-white rounded-xl border border-slate-200 p-6">
+            <h2 class="text-base font-semibold">
+                <i class="fa-solid fa-bullseye text-brand mr-2"></i>Expected output fields
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">The schema the mapper maps every file into. Uploaded columns are matched to these.</p>
+            <div id="schemaFields" class="mt-4 flex flex-wrap gap-3 text-sm text-slate-500">
+                <span><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Loading schema…</span>
+            </div>
+            <p id="requireHint" class="hidden mt-3 text-xs text-slate-500"></p>
+        </section>
+
+        <!-- Learning queue -->
+        <section class="bg-white rounded-xl border border-slate-200 p-6">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <h2 class="text-base font-semibold">
+                        <i class="fa-solid fa-graduation-cap text-brand mr-2"></i>Learning queue
+                        <span id="learnPendingBadge" class="hidden ml-2 align-middle text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full"></span>
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-1">AI-proposed debit/credit header mappings held for your approval. Approve to make a header a permanent exact match; reject to discard.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="learnStats" class="text-xs text-slate-400"></span>
+                    <button id="learnRefresh" class="border border-slate-300 hover:border-brand hover:text-brand text-slate-600 font-medium px-3 py-1.5 rounded-lg text-xs inline-flex items-center gap-2">
+                        <i class="fa-solid fa-rotate"></i><span>Refresh</span>
+                    </button>
+                </div>
+            </div>
+            <div id="learnBody" class="mt-4 text-sm text-slate-500">
+                <span><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Loading queue…</span>
+            </div>
+        </section>
+
+        <!-- Error -->
+        <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 text-sm"></div>
+
+        <!-- Loading -->
+        <div id="loadingBox" class="hidden bg-white rounded-xl border border-slate-200 px-5 py-8 text-center text-slate-500">
+            <i class="fa-solid fa-circle-notch fa-spin text-2xl text-brand"></i>
+            <p class="mt-3 text-sm">Mapping…</p>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden space-y-6">
+
+            <!-- Review banner -->
+            <div id="reviewBanner" class="rounded-xl px-5 py-4 border text-sm"></div>
+
+            <!-- Schema coverage: did every expected output field get a source column? -->
+            <section class="bg-white rounded-xl border border-slate-200 p-6">
+                <div class="flex items-center justify-between flex-wrap gap-3">
+                    <h2 class="text-base font-semibold">
+                        <i class="fa-solid fa-list-check text-brand mr-2"></i>Schema coverage
+                    </h2>
+                    <span id="coverageSummary" class="text-xs font-medium"></span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">Whether each expected output field was satisfied by a column in this file.</p>
+                <div id="coverageGrid" class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3"></div>
+            </section>
+
+            <!-- Mapping summary -->
+            <section class="bg-white rounded-xl border border-slate-200 p-6">
+                <div class="flex items-center justify-between flex-wrap gap-3">
+                    <h2 class="text-base font-semibold">
+                        <i class="fa-solid fa-diagram-project text-brand mr-2"></i>Column mapping
+                    </h2>
+                    <div class="flex items-center gap-3">
+                        <span id="headerRow" class="text-xs text-slate-500"></span>
+                        <button id="downloadBtn"
+                                class="border border-slate-300 hover:border-brand hover:text-brand text-slate-600 font-medium px-4 py-1.5 rounded-lg text-sm inline-flex items-center gap-2">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Download mapped .xlsx</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-4 overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs uppercase tracking-wide text-slate-400 border-b border-slate-200">
+                                <th class="py-2 pr-4 font-semibold">Source header</th>
+                                <th class="py-2 pr-4 font-semibold">Mapped field</th>
+                                <th class="py-2 pr-4 font-semibold">Confidence</th>
+                                <th class="py-2 pr-4 font-semibold">Method / reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mappingBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Transactions -->
+            <section class="bg-white rounded-xl border border-slate-200 p-6">
+                <h2 class="text-base font-semibold">
+                    <i class="fa-solid fa-table-list text-brand mr-2"></i>
+                    Mapped rows <span id="rowCount" class="text-slate-400 font-normal text-sm"></span>
+                </h2>
+                <div class="mt-4 overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr id="txnHead" class="text-left text-xs uppercase tracking-wide text-slate-400 border-b border-slate-200"></tr>
+                        </thead>
+                        <tbody id="txnBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        // Self-contained: this page is bundled in the package and served at
+        // `<router-prefix>/test`, so the API lives one segment up. Derive that base
+        // from our own path (works for any TABULARMAPPER_ROUTE_PREFIX) and target
+        // all endpoints relative to it — no server-side injection needed.
+        const API_BASE = location.pathname.replace(/\/test\/?$/, '') + '/';
+        document.getElementById('cfgLink').href = API_BASE + 'config';
+
+        // --- Expected output schema (from the mapper's /config.json endpoint) ---
+        // Cached so the per-file "Schema coverage" panel can be computed on map.
+        let schemaMeta = { fields: [], critical: new Set(), inRequire: new Set(), requireGroups: [] };
+
+        (async function loadSchema() {
+            const box = document.getElementById('schemaFields');
+            try {
+                const resp = await fetch(`${API_BASE}config.json`);
+                if (!resp.ok) throw new Error(resp.status);
+                const cfg = await resp.json();
+                const fields = cfg.output_schema || [];
+                if (!fields.length) { box.innerHTML = '<span class="text-slate-400 italic">No schema configured.</span>'; return; }
+
+                const critical = new Set(cfg.critical_fields || []);
+                const requireGroups = cfg.require_any || [];
+                const inRequireGroup = new Set(requireGroups.flat());
+                schemaMeta = { fields, critical, inRequire: inRequireGroup, requireGroups };
+
+                box.innerHTML = fields.map(f => {
+                    const required = critical.has(f.field) || inRequireGroup.has(f.field);
+                    const reqTag = required
+                        ? '<span class="ml-2 text-[10px] uppercase tracking-wide font-semibold text-brand">required</span>' : '';
+                    return `<div class="border border-slate-200 rounded-lg px-3 py-2" title="${escapeHtml(f.description || '')}">
+                        <div class="flex items-center">
+                            <span class="font-semibold text-slate-800">${escapeHtml(f.header || f.field)}</span>${reqTag}
+                        </div>
+                        <div class="mt-0.5 code-font text-xs text-slate-500">${escapeHtml(f.field)} · ${escapeHtml(f.type || 'string')}</div>
+                    </div>`;
+                }).join('');
+
+                const hint = document.getElementById('requireHint');
+                if (requireGroups.length) {
+                    const parts = requireGroups.map(g =>
+                        g.map(f => `<span class="code-font">${escapeHtml(f)}</span>`).join(' or '));
+                    hint.innerHTML = `<i class="fa-solid fa-circle-info mr-1"></i>At least one required from each group: ${parts.join('; ')}.`;
+                    hint.classList.remove('hidden');
+                }
+            } catch (_) {
+                box.innerHTML = '<span class="text-red-500">Could not load output schema.</span>';
+            }
+        })();
+
+        // --- AI-ready status (from the mapper's /health endpoint) ---
+        (async function checkAiStatus() {
+            const el = document.getElementById('aiStatus');
+            try {
+                const resp = await fetch(`${API_BASE}health`);
+                if (!resp.ok) throw new Error(resp.status);
+                const h = await resp.json();
+                if (h.ai_enabled) {
+                    el.className = 'ml-auto inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700';
+                    el.innerHTML = '<i class="fa-solid fa-robot"></i><span>AI ready</span>';
+                } else {
+                    el.className = 'ml-auto inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-slate-100 text-slate-500';
+                    el.innerHTML = '<i class="fa-solid fa-robot"></i><span>AI off — deterministic only</span>';
+                }
+            } catch (_) {
+                el.className = 'ml-auto inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-red-100 text-red-700';
+                el.innerHTML = '<i class="fa-solid fa-plug-circle-xmark"></i><span>Server unreachable</span>';
+            }
+        })();
+
+        // --- Learning queue (from the mapper's /learn endpoints) ---
+        async function loadLearn() {
+            const body = document.getElementById('learnBody');
+            const statsEl = document.getElementById('learnStats');
+            const badge = document.getElementById('learnPendingBadge');
+            try {
+                const resp = await fetch(`${API_BASE}learn/pending`);
+                if (!resp.ok) throw new Error(resp.status);
+                const data = await resp.json();
+                const stats = data.stats || {};
+                statsEl.textContent =
+                    `applied ${stats.applied ?? 0} · pending ${stats.pending ?? 0} · conflicts ${stats.conflicts ?? 0}`;
+
+                const pending = data.pending || [];
+                if (pending.length) {
+                    badge.textContent = pending.length;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+
+                if (!pending.length) {
+                    body.innerHTML = '<div class="text-slate-400 italic py-2"><i class="fa-regular fa-circle-check mr-2"></i>No pending mappings — nothing to review.</div>';
+                    return;
+                }
+
+                body.innerHTML = pending.map(p => {
+                    const phrase = escapeHtml(p.phrase || '');
+                    const field = escapeHtml(p.field || '');
+                    const meta = [p.source, p.bank].filter(Boolean).map(escapeHtml).join(' · ');
+                    const attrs = `data-phrase="${phrase}" data-field="${field}"`;
+                    return `<div class="flex items-center justify-between gap-4 border border-slate-200 rounded-lg px-4 py-3 mb-2">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="code-font text-slate-800 truncate">"${phrase}"</span>
+                                <i class="fa-solid fa-arrow-right text-slate-400 text-xs"></i>
+                                <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">${field}</span>
+                            </div>
+                            ${meta ? `<div class="mt-1 text-xs text-slate-400">${meta}</div>` : ''}
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button class="learn-approve bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" ${attrs}>
+                                <i class="fa-solid fa-check"></i>Approve
+                            </button>
+                            <button class="learn-reject border border-slate-300 hover:border-red-400 hover:text-red-600 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" ${attrs}>
+                                <i class="fa-solid fa-xmark"></i>Reject
+                            </button>
+                        </div>
+                    </div>`;
+                }).join('');
+
+                body.querySelectorAll('.learn-approve').forEach(b =>
+                    b.addEventListener('click', () => reviewPending(b.dataset.phrase, b.dataset.field, 'approve', b)));
+                body.querySelectorAll('.learn-reject').forEach(b =>
+                    b.addEventListener('click', () => reviewPending(b.dataset.phrase, b.dataset.field, 'reject', b)));
+            } catch (_) {
+                body.innerHTML = '<span class="text-red-500">Could not load the learning queue.</span>';
+            }
+        }
+
+        async function reviewPending(phrase, field, action, btn) {
+            const row = btn.closest('div.flex.items-center.justify-between');
+            row.querySelectorAll('button').forEach(b => { b.disabled = true; b.classList.add('opacity-40', 'cursor-not-allowed'); });
+            try {
+                const q = `phrase=${encodeURIComponent(phrase)}&field=${encodeURIComponent(field)}`;
+                const resp = await fetch(`${API_BASE}learn/${action}?${q}`, { method: 'POST' });
+                if (!resp.ok) throw new Error(resp.status);
+                await loadLearn();
+            } catch (err) {
+                showError(`Could not ${action} "${phrase}" → ${field}: ${err.message || err}`);
+                row.querySelectorAll('button').forEach(b => { b.disabled = false; b.classList.remove('opacity-40', 'cursor-not-allowed'); });
+            }
+        }
+
+        document.getElementById('learnRefresh').addEventListener('click', loadLearn);
+        loadLearn();
+
+        const fileInput = document.getElementById('fileInput');
+        const dropzone = document.getElementById('dropzone');
+        const fileNameEl = document.getElementById('fileName');
+        const threshold = document.getElementById('threshold');
+        const thresholdNum = document.getElementById('thresholdNum');
+        const mapBtn = document.getElementById('mapBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const errorBox = document.getElementById('errorBox');
+        const loadingBox = document.getElementById('loadingBox');
+        const results = document.getElementById('results');
+
+        let selectedFile = null;
+
+        // --- file selection ---
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+        ['dragover', 'dragenter'].forEach(ev =>
+            dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+        ['dragleave', 'dragend'].forEach(ev =>
+            dropzone.addEventListener(ev, () => dropzone.classList.remove('drag')));
+        dropzone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropzone.classList.remove('drag');
+            if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+        });
+
+        function setFile(file) {
+            if (!file) return;
+            selectedFile = file;
+            fileNameEl.textContent = file.name;
+            fileNameEl.classList.remove('hidden');
+        }
+
+        // --- threshold sync ---
+        function clampThreshold(v) { return Math.max(0, Math.min(100, parseInt(v, 10) || 0)); }
+        threshold.addEventListener('input', () => { thresholdNum.value = threshold.value; });
+        thresholdNum.addEventListener('input', () => {
+            thresholdNum.value = clampThreshold(thresholdNum.value);
+            threshold.value = thresholdNum.value;
+        });
+
+        // --- map ---
+        mapBtn.addEventListener('click', doMap);
+
+        async function doMap() {
+            if (!selectedFile) { showError('Choose a spreadsheet first.'); return; }
+            hideError();
+            results.classList.add('hidden');
+            loadingBox.classList.remove('hidden');
+            mapBtn.disabled = true;
+
+            try {
+                const t = clampThreshold(thresholdNum.value);
+                const fd = new FormData();
+                fd.append('file', selectedFile);
+                const resp = await fetch(`${API_BASE}map?format=json&threshold=${t}`, {
+                    method: 'POST', body: fd,
+                });
+                if (!resp.ok) {
+                    let detail = `${resp.status} ${resp.statusText}`;
+                    try { const j = await resp.json(); if (j.detail) detail = j.detail; } catch (_) {}
+                    throw new Error(detail);
+                }
+                render(await resp.json());
+                loadLearn();   // a new file may have queued debit/credit mappings for review
+            } catch (err) {
+                showError(err.message || String(err));
+            } finally {
+                loadingBox.classList.add('hidden');
+                mapBtn.disabled = false;
+            }
+        }
+
+        function render(data) {
+            // Review banner
+            const banner = document.getElementById('reviewBanner');
+            if (data.needs_review) {
+                const reasons = (data.review_reasons || []).map(r => `<li>${escapeHtml(r)}</li>`).join('');
+                banner.className = 'rounded-xl px-5 py-4 border text-sm bg-amber-50 border-amber-200 text-amber-800';
+                banner.innerHTML = `<div class="font-semibold"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Needs review</div>`
+                    + (reasons ? `<ul class="list-disc ml-6 mt-2 space-y-0.5">${reasons}</ul>` : '');
+            } else {
+                banner.className = 'rounded-xl px-5 py-4 border text-sm bg-emerald-50 border-emerald-200 text-emerald-800';
+                banner.innerHTML = `<span class="font-semibold"><i class="fa-solid fa-circle-check mr-2"></i>Mapped cleanly</span> — no review needed.`;
+            }
+
+            document.getElementById('headerRow').textContent = `Header row detected at line ${data.header_index + 1}`;
+
+            // Schema coverage: for each expected field, was a source column mapped to it?
+            const colByField = {};
+            (data.columns || []).forEach(c => { if (c.field) colByField[c.field] = c; });
+            const fields = schemaMeta.fields.length
+                ? schemaMeta.fields
+                : (data.schema_columns || []).map((h, i) => ({ field: (data.columns.find(c => c.field) || {}).field || h, header: h }));
+            let satisfied = 0, missingRequired = 0;
+            const grid = document.getElementById('coverageGrid');
+            grid.innerHTML = fields.map(f => {
+                const col = colByField[f.field];
+                const required = schemaMeta.critical.has(f.field) || schemaMeta.inRequire.has(f.field);
+                const reqTag = required ? '<span class="ml-1.5 text-[10px] uppercase tracking-wide font-semibold text-brand">required</span>' : '';
+                if (col) {
+                    satisfied++;
+                    return `<div class="flex items-start gap-2 border border-emerald-200 bg-emerald-50/60 rounded-lg px-3 py-2">
+                        <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5"></i>
+                        <div class="min-w-0">
+                            <div class="font-medium text-slate-800">${escapeHtml(f.header || f.field)}${reqTag}</div>
+                            <div class="text-xs text-slate-500 truncate">from <span class="code-font">"${escapeHtml(col.raw_header)}"</span> · ${escapeHtml(col.method)} ${col.confidence}</div>
+                        </div>
+                    </div>`;
+                }
+                if (required) missingRequired++;
+                const border = required ? 'border-red-200 bg-red-50/60' : 'border-slate-200';
+                const icon = required ? '<i class="fa-solid fa-circle-exclamation text-red-500 mt-0.5"></i>' : '<i class="fa-regular fa-circle text-slate-300 mt-0.5"></i>';
+                return `<div class="flex items-start gap-2 border ${border} rounded-lg px-3 py-2">
+                    ${icon}
+                    <div class="min-w-0">
+                        <div class="font-medium ${required ? 'text-red-700' : 'text-slate-500'}">${escapeHtml(f.header || f.field)}${reqTag}</div>
+                        <div class="text-xs ${required ? 'text-red-500' : 'text-slate-400'}">no source column mapped</div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            const total = fields.length;
+            const summary = document.getElementById('coverageSummary');
+            if (missingRequired > 0) {
+                summary.className = 'text-xs font-medium text-red-600';
+                summary.textContent = `${satisfied}/${total} mapped — ${missingRequired} required field${missingRequired > 1 ? 's' : ''} missing`;
+            } else if (satisfied === total) {
+                summary.className = 'text-xs font-medium text-emerald-600';
+                summary.textContent = `all ${total} fields mapped`;
+            } else {
+                summary.className = 'text-xs font-medium text-slate-500';
+                summary.textContent = `${satisfied}/${total} fields mapped`;
+            }
+
+            // Column mapping table (source-column view)
+            const mapBody = document.getElementById('mappingBody');
+            mapBody.innerHTML = (data.columns || []).map(c => {
+                const mapped = c.field != null && c.field !== '';
+                if (mapped) {
+                    return `<tr class="border-b border-slate-100">
+                        <td class="py-2 pr-4 code-font text-slate-700">${escapeHtml(c.raw_header || '')}</td>
+                        <td class="py-2 pr-4"><span class="code-font font-medium text-slate-800">${escapeHtml(c.field)}</span></td>
+                        <td class="py-2 pr-4">${confBadge(c.confidence)}</td>
+                        <td class="py-2 pr-4"><span class="code-font text-xs text-slate-500">${escapeHtml(c.method || '')}</span></td>
+                    </tr>`;
+                }
+                // Unmapped: show WHY, plus the best score reached so it's not a mystery.
+                const conf = c.confidence ? `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500">${c.confidence}</span>` : '';
+                return `<tr class="border-b border-slate-100 bg-slate-50/40">
+                    <td class="py-2 pr-4 code-font text-slate-500">${escapeHtml(c.raw_header || '')}</td>
+                    <td class="py-2 pr-4"><span class="text-slate-400 italic">not mapped</span></td>
+                    <td class="py-2 pr-4">${conf}</td>
+                    <td class="py-2 pr-4"><span class="text-xs text-slate-500">${escapeHtml(ignoreReason(c))}</span></td>
+                </tr>`;
+            }).join('');
+
+            // Transactions — derive ordered field keys. Transaction dicts are keyed
+            // in schema order (aligning with schema_columns), so prefer those; fall
+            // back to the mapped-column fields when there are no rows.
+            const txns = data.transactions || [];
+            const seen = new Set();
+            const orderedFields = [];
+            if (txns.length) Object.keys(txns[0]).forEach(k => { if (!seen.has(k)) { seen.add(k); orderedFields.push(k); } });
+            (data.columns || []).filter(c => c.field).map(c => c.field)
+                .forEach(f => { if (!seen.has(f)) { seen.add(f); orderedFields.push(f); } });
+
+            // Prefer display names from schema_columns when counts line up, else field keys.
+            const headers = (data.schema_columns && data.schema_columns.length === orderedFields.length)
+                ? data.schema_columns : orderedFields;
+
+            document.getElementById('txnHead').innerHTML =
+                orderedFields.map((_, i) => `<th class="py-2 pr-4 font-semibold">${escapeHtml(headers[i])}</th>`).join('');
+            document.getElementById('txnBody').innerHTML = txns.map(row =>
+                `<tr class="border-b border-slate-100">`
+                + orderedFields.map(f => {
+                    const v = row[f];
+                    return `<td class="py-2 pr-4 code-font text-slate-700">${v == null ? '' : escapeHtml(String(v))}</td>`;
+                }).join('')
+                + `</tr>`).join('');
+            document.getElementById('rowCount').textContent = `(${txns.length})`;
+
+            results.classList.remove('hidden');
+        }
+
+        function confBadge(c) {
+            const n = Number(c) || 0;
+            let cls = 'bg-emerald-100 text-emerald-700';
+            if (n < 60) cls = 'bg-red-100 text-red-700';
+            else if (n < 85) cls = 'bg-amber-100 text-amber-700';
+            return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${cls}">${n}</span>`;
+        }
+
+        // Human-readable reason a column was left unmapped (drives the "why ignored").
+        function ignoreReason(c) {
+            switch (c.method) {
+                case 'none': return 'blank header — nothing to map';
+                case 'not_in_schema': return 'recognized, but this field is not in your output schema';
+                case 'dup': return 'duplicate — another column already maps to this field';
+                case 'dup_pair': return 'two numeric columns collapsed — likely a debit/credit pair; review';
+                case 'fuzzy': return `no confident match (best score ${c.confidence || 0} below the threshold)`;
+                default: return c.method ? `unmatched (${c.method})` : 'no match';
+            }
+        }
+
+        // --- download mapped .xlsx ---
+        downloadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            downloadBtn.disabled = true;
+            try {
+                const t = clampThreshold(thresholdNum.value);
+                const fd = new FormData();
+                fd.append('file', selectedFile);
+                const resp = await fetch(`${API_BASE}map?format=file&threshold=${t}`, {
+                    method: 'POST', body: fd,
+                });
+                if (!resp.ok) {
+                    let detail = `${resp.status} ${resp.statusText}`;
+                    try { const j = await resp.json(); if (j.detail) detail = j.detail; } catch (_) {}
+                    throw new Error(detail);
+                }
+                const blob = await resp.blob();
+                const stem = selectedFile.name.replace(/\.[^.]+$/, '');
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${stem}_mapped.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                showError(err.message || String(err));
+            } finally {
+                downloadBtn.disabled = false;
+            }
+        });
+
+        // --- helpers ---
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.classList.remove('hidden');
+        }
+        function hideError() { errorBox.classList.add('hidden'); }
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+    </script>
+</body>
+</html>

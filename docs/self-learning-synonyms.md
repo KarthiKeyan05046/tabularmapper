@@ -48,6 +48,9 @@ store.stats()                           # {applied, pending, conflicts}
 FastAPI: the router auto-loads the store at startup, learns on every `/map`, and
 exposes `GET /mapper/learn/pending`, `POST /mapper/learn/approve`,
 `POST /mapper/learn/reject` (prefix configurable via `TABULARMAPPER_ROUTE_PREFIX`).
+The bundled test page at `GET /mapper/test` renders this queue with inline
+Approve/Reject buttons, so a reviewer can clear pending debit/credit synonyms
+without calling the endpoints by hand.
 
 Not yet built from the plan below: the `harvest_folder` bootstrap (§7).
 
