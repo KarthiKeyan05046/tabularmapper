@@ -339,9 +339,12 @@ message (always sent), so overriding the system prompt is safe.
 ## Self-learning
 
 When the AI resolves a new header, it's remembered so the next statement from that
-bank maps deterministically (an `exact` match) with no AI call. Debit/credit are
-held for a one-time human approval (a wrong direction is the costly error);
-everything else auto-applies.
+bank maps deterministically (an `exact` match) with no AI call. Fields listed in the
+config's **`gated_fields`** are held for a one-time human approval (via
+`/learn/pending` + `/learn/approve`); everything else auto-applies. Nothing is gated
+by default; `bank_preset()` gates `debit`/`credit` (a wrong direction is the costly
+error). Use a persistent `TABULARMAPPER_LEARN_STORE` (sqlite/redis/postgres) so it
+converges across uploads instead of forgetting on restart.
 
 ```python
 from tabularmapper import LearnStore, apply_learned, process_file
@@ -388,7 +391,9 @@ Optional keys, all data-driven (omit them for a plain type-based mapping):
 | `output_schema[].description` | hint for the AI matcher (falls back to the field name) |
 | `critical_fields` | fields that must be mapped, else `needs_review` |
 | `require_any` | `[[a, b]]` — each group needs ≥1 mapped field, else `needs_review` |
-| `reconcile` | `{"signed": s, "negative": n, "positive": p}` — split one signed column into two directional ones (e.g. debit/credit) |
+| `reconcile` | Split one amount column into two directional fields. **Sign mode:** `{"signed":s,"negative":n,"positive":p}` (e.g. `-500`→debit, `+500`→credit). **Direction mode:** add `"direction":flag` (+ optional `negative_values`/`positive_values`) to route an *unsigned* amount by a separate flag column (`Type`=DEBIT/CREDIT, `DR/CR`). Also handles plain separate debit/credit columns. |
+| `gated_fields` | fields whose AI/harvest-learned synonyms wait in `/learn/pending` instead of auto-applying (e.g. `["debit","credit"]`); empty by default |
+| `ai_system_prompt` | override the AI matcher's system prompt for this schema |
 | `row_keep_if_any` | a row is a record only if ≥1 of these has a value (default: any non-empty) |
 | `continuation_field` | a row with only this field folds into the row above (multi-line cells) |
 

@@ -105,9 +105,11 @@ is what makes a new layout "just work":
 |---|---|
 | `critical_fields` | Fields that MUST be present, or the whole file is flagged for review. |
 | `require_any` | "At least one of these must map." E.g. `[["debit","credit","amount"]]` means the file needs *some* money column. |
-| `reconcile` | Split ONE signed column into two. `{"signed":"amount","negative":"debit","positive":"credit"}` turns `-500` into `debit=500` and `+500` into `credit=500`. |
+| `reconcile` | Split ONE amount column into two directional fields. **Sign mode:** `{"signed":"amount","negative":"debit","positive":"credit"}` turns `-500` → `debit=500`, `+500` → `credit=500`. **Direction mode** (add `"direction":"dctype"` + optional `negative_values`/`positive_values`): for an *unsigned* amount paired with a separate flag column (`Type`=DEBIT/CREDIT, `DR/CR`), routes by the flag value instead of the sign. One config handles both, plus plain separate debit/credit columns. |
+| `gated_fields` | Fields whose AI/harvest-learned synonyms wait in a review queue (`/learn/pending`) instead of auto-applying — for sensitive fields like `debit`/`credit`. Empty by default (nothing gated); `bank_preset()` opts into `["debit","credit"]`. |
 | `row_keep_if_any` | Keep a row only if one of these fields has a value (drops footer/blank rows). |
 | `continuation_field` | If a row has only this field filled (e.g. a wrapped description line), merge it into the previous row. |
+| `ai_system_prompt` | Override the AI matcher's system prompt for this schema (or use `TABULARMAPPER_AI_SYSTEM_PROMPT`). |
 
 You don't have to understand all of these on day one. Start with `output_schema` +
 `synonyms`; add the rest when a real file needs them.
@@ -326,10 +328,13 @@ copy `config.example.json` (which is this same layout) and edit it into your own
 
 When AI or a human confirms a new header wording, the tool can **remember it as a
 synonym** so it becomes an instant exact match next time — the tool gets smarter and
-cheaper the more you use it. Sensitive fields (like debit/credit) are held in a
-**pending review queue** instead of auto-trusted, which you approve via the
-`/mapper/learn/*` endpoints. This is off unless you wire up a learn store
-(`TABULARMAPPER_LEARN_STORE`, same URL styles as the cache).
+cheaper the more you use it. Fields you list in **`gated_fields`** are held in a
+**pending review queue** instead of auto-trusted, which you approve/reject via the
+`/mapper/learn/*` endpoints. Nothing is gated by default (a general mapper);
+`bank_preset()` gates `debit`/`credit`, since a wrong money direction is the costly
+error. This is off unless you wire up a learn store (`TABULARMAPPER_LEARN_STORE`,
+same URL styles as the cache) — with the default in-memory store it forgets on
+restart, so use sqlite/redis/postgres to make it converge across uploads.
 
 ---
 
