@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Direction-column reconcile.** `reconcile` now supports an unsigned `amount`
+  column paired with a separate direction/flag column (e.g. `Type` = DEBIT/CREDIT,
+  or a `DR/CR` column): `reconcile: {signed, negative, positive, direction,
+  negative_values?, positive_values?}`. The amount is routed to debit/credit by
+  the flag value instead of by sign. Falls back to sign-routing when no flag
+  column is present, and to separate debit/credit columns otherwise — one config
+  handles all three layouts. If `direction` is declared but its column isn't
+  found and every row resolves to one side, the file is flagged `needs_review`
+  rather than silently booking everything one way.
 
 ## [1.0.9] — 2026-07-06
 

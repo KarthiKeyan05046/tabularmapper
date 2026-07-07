@@ -172,9 +172,10 @@ class Config:
 
     @property
     def reconcile_fields(self) -> list[str]:
-        """The fields involved in signed/split reconciliation, if any."""
+        """The fields involved in reconciliation, if any (incl. the direction
+        flag field so its column is matchable but never an output field)."""
         r = self.reconcile or {}
-        return [r[k] for k in ("signed", "negative", "positive") if r.get(k)]
+        return [r[k] for k in ("signed", "negative", "positive", "direction") if r.get(k)]
 
     @property
     def allowed_fields(self) -> list[str]:

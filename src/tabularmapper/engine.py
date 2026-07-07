@@ -567,6 +567,15 @@ def normalize_date(v, dayfirst: Optional[bool] = None) -> Optional[str]:
 
 _AMT_CLEAN_RE = re.compile(r"[^\d.\-()]")
 
+# Default flag vocabularies for direction-column reconcile (normalized). A config
+# can override with reconcile.negative_values / positive_values. Single letters
+# are intentionally excluded (too ambiguous) — declare them explicitly if a bank
+# uses "D"/"C".
+_DEFAULT_NEG_FLAGS = ["dr", "debit", "debits", "withdrawal", "withdrawals",
+                      "paid out", "payment", "outflow", "out", "-"]
+_DEFAULT_POS_FLAGS = ["cr", "credit", "credits", "deposit", "deposits",
+                      "paid in", "receipt", "inflow", "in", "+"]
+
 
 def normalize_amount(v) -> Optional[float]:
     """Return a signed float or None.
@@ -637,13 +646,19 @@ def extract_records(rows: list[list], header_idx: int,
     types = _FIELD_TYPES                       # field -> "date"|"money"/"number"|"text"
     col_of = {f: _field_col(col_maps, f) for f in fields}
 
-    # Optional signed/split reconciliation, declared in config (not hardcoded):
-    #   reconcile = {"signed": <src>, "negative": <fld>, "positive": <fld>}
+    # Optional reconciliation, declared in config (not hardcoded). Two modes:
+    #   sign:      {"signed": <amt>, "negative": <fld>, "positive": <fld>}
+    #   direction: same + {"direction": <flag>, "negative_values":[...], "positive_values":[...]}
+    #              -> route an UNSIGNED amount by a separate flag/type column.
     rec_cfg = cfg.reconcile or {}
     neg_f, pos_f, sig_f = rec_cfg.get("negative"), rec_cfg.get("positive"), rec_cfg.get("signed")
+    dir_f = rec_cfg.get("direction")
     ci_neg = _field_col(col_maps, neg_f) if neg_f else None
     ci_pos = _field_col(col_maps, pos_f) if pos_f else None
     ci_sig = _field_col(col_maps, sig_f) if sig_f else None
+    ci_dir = _field_col(col_maps, dir_f) if dir_f else None
+    neg_flags = {_norm(x) for x in (rec_cfg.get("negative_values") or _DEFAULT_NEG_FLAGS)}
+    pos_flags = {_norm(x) for x in (rec_cfg.get("positive_values") or _DEFAULT_POS_FLAGS)}
 
     # Which fields decide "this row is a real record". Config-driven; if unset,
     # keep any row that has at least one non-empty mapped value (generic).
@@ -664,7 +679,18 @@ def extract_records(rows: list[list], header_idx: int,
         # --- reconcile the directional pair, if declared ---
         neg_val = pos_val = None
         if rec_cfg:
-            if ci_sig is not None and ci_neg is None and ci_pos is None:
+            if ci_dir is not None and ci_sig is not None:
+                # direction-column mode: UNSIGNED amount routed by a flag column.
+                amt = normalize_amount(cell(r, ci_sig))
+                flag = _norm(cell(r, ci_dir))
+                if amt is not None:
+                    a = abs(amt)
+                    if flag in neg_flags:
+                        neg_val = a
+                    elif flag in pos_flags:
+                        pos_val = a
+                    # unknown flag -> leave both None (never guess direction on money)
+            elif ci_sig is not None and ci_neg is None and ci_pos is None:
                 amt = normalize_amount(cell(r, ci_sig))    # one signed column -> split
                 if amt is not None:
                     if amt < 0:
@@ -753,6 +779,22 @@ def evaluate_review(col_maps: list[ColumnMap], records: list[dict],
             reasons.append(
                 f"two numeric columns collapsed to one field near "
                 f"'{m.raw_header}' — likely a debit/credit pair; review")
+
+    # direction-column reconcile declared, amount mapped, but the flag column was
+    # NOT found. That's fine if the amount carried a sign (records come out mixed);
+    # it's dangerous only if everything landed on ONE side (an unsigned amount that
+    # nothing disambiguated) — flag that instead of shipping an all-one-way result.
+    _rec = _ACTIVE_CONFIG.reconcile or {}
+    if _rec.get("direction") and _rec.get("signed"):
+        if _rec["signed"] in mapped_fields and _rec["direction"] not in mapped_fields:
+            nf, pf = _rec.get("negative"), _rec.get("positive")
+            has_neg = any(r.get(nf) not in (None, "") for r in records)
+            has_pos = any(r.get(pf) not in (None, "") for r in records)
+            if not (has_neg and has_pos):
+                reasons.append(
+                    f"amount mapped but the direction column ('{_rec['direction']}') "
+                    f"was not found and every row resolved to one side — cannot "
+                    f"confirm debit/credit; review")
 
     if not records:
         reasons.append("no transaction rows extracted")

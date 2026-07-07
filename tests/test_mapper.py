@@ -385,6 +385,57 @@ def test_mutex_numeric_dup_flags_review_backstop(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# Direction-column reconcile (Bug 1) — unsigned amount + separate flag column
+# --------------------------------------------------------------------------
+def _dir_cfg():
+    from tabularmapper import config_from_dict
+    return config_from_dict({
+        "output_schema": [{"field": "date", "type": "date"},
+                          {"field": "narration", "type": "string"},
+                          {"field": "debit", "type": "currency"},
+                          {"field": "credit", "type": "currency"}],
+        "synonyms": {"date": ["date"], "narration": ["details"],
+                     "amount": ["amount"], "dctype": ["type", "dr/cr"]},
+        "reconcile": {"signed": "amount", "negative": "debit", "positive": "credit",
+                      "direction": "dctype"},
+        "critical_fields": ["date"], "require_any": [["debit", "credit", "amount"]]})
+
+
+def test_direction_column_reconcile_routes_by_flag(tmp_path):
+    """UNSIGNED amount + a separate Type/DR-CR column: route by the flag, not the
+    (absent) sign — a debit must not be silently booked as a credit."""
+    from openpyxl import Workbook
+    _engine.configure(config=_dir_cfg())
+    wb = Workbook(); ws = wb.active
+    ws.append(["Date", "Details", "Amount", "Type"])
+    ws.append(["01-06-2025", "RENT", "1299.50", "DEBIT"])
+    ws.append(["02-06-2025", "SALARY", "45000", "CREDIT"])
+    ws.append(["03-06-2025", "ATM", "2000", "DR"])       # abbreviated flag
+    p = str(tmp_path / "flag.xlsx"); wb.save(p)
+    res = process_file(p)
+    recs = {r["narration"]: r for r in res.records}
+    assert recs["RENT"]["debit"] == 1299.50 and recs["RENT"].get("credit") is None
+    assert recs["SALARY"]["credit"] == 45000.0 and recs["SALARY"].get("debit") is None
+    assert recs["ATM"]["debit"] == 2000.0        # "DR" -> debit
+    assert res.needs_review is False
+
+
+def test_direction_reconcile_missing_flag_flags_review(tmp_path):
+    """direction declared + amount mapped + no flag column + everything resolves
+    one way (unsigned) -> needs_review, never a silent all-one-side result."""
+    from openpyxl import Workbook
+    _engine.configure(config=_dir_cfg())
+    wb = Workbook(); ws = wb.active
+    ws.append(["Date", "Details", "Amount"])     # unsigned amount, NO type column
+    ws.append(["01-06-2025", "A", "100"])
+    ws.append(["02-06-2025", "B", "200"])
+    p = str(tmp_path / "noflag.xlsx"); wb.save(p)
+    res = process_file(p)
+    assert res.needs_review is True
+    assert any("direction column" in r for r in res.review_reasons)
+
+
+# --------------------------------------------------------------------------
 # Real-world files (present in repo root)
 # --------------------------------------------------------------------------
 def test_real_payir_header_deep():
