@@ -139,6 +139,49 @@
                     </div>
                 </section>
 
+                <!-- Reconcile -->
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-100">
+                        <h2 class="font-semibold text-sm text-slate-800">Reconcile <span class="text-slate-400 font-normal">(optional)</span></h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Split ONE source column into two directional fields. Signed mode uses the value's sign; direction mode uses a separate flag column.</p>
+                    </div>
+                    <div class="p-5 grid grid-cols-2 gap-3 text-[13px]">
+                        <label class="block"><span class="text-xs text-slate-500">signed / amount source field</span>
+                            <input id="rc-signed" oninput="app.syncReconcile()" placeholder="amount" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-1.5"></label>
+                        <label class="block"><span class="text-xs text-slate-500">direction flag field <span class="text-slate-400">(optional)</span></span>
+                            <input id="rc-direction" oninput="app.syncReconcile()" placeholder="dctype" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-1.5"></label>
+                        <label class="block"><span class="text-xs text-slate-500">negative → field</span>
+                            <select id="rc-negative" onchange="app.syncReconcile()" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white"></select></label>
+                        <label class="block"><span class="text-xs text-slate-500">positive → field</span>
+                            <select id="rc-positive" onchange="app.syncReconcile()" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white"></select></label>
+                        <label class="block"><span class="text-xs text-slate-500">negative flag values <span class="text-slate-400">(comma, optional)</span></span>
+                            <input id="rc-negvals" oninput="app.syncReconcile()" placeholder="dr, debit, withdrawal" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-1.5"></label>
+                        <label class="block"><span class="text-xs text-slate-500">positive flag values <span class="text-slate-400">(comma, optional)</span></span>
+                            <input id="rc-posvals" oninput="app.syncReconcile()" placeholder="cr, credit, deposit" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-1.5"></label>
+                    </div>
+                    <p class="px-5 pb-4 -mt-1 text-xs text-slate-400">Leave <b>signed</b> empty to disable reconcile. The signed/direction fields are usually virtual (declare them in <b>synonyms</b> only, not as output fields).</p>
+                </section>
+
+                <!-- Gated fields -->
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-100">
+                        <h2 class="font-semibold text-sm text-slate-800">Gated fields <span class="text-slate-400 font-normal">(optional)</span></h2>
+                        <p class="text-xs text-slate-400 mt-0.5">AI/harvest guesses for these fields wait in a review queue instead of auto-learning. Use for sensitive fields (e.g. debit/credit).</p>
+                    </div>
+                    <div id="gated-container" class="p-5 flex flex-wrap gap-2"></div>
+                </section>
+
+                <!-- AI system prompt -->
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-100">
+                        <h2 class="font-semibold text-sm text-slate-800">AI system prompt <span class="text-slate-400 font-normal">(optional)</span></h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Override the AI matcher's system prompt for this schema. Leave blank to use the built-in default.</p>
+                    </div>
+                    <div class="p-5">
+                        <textarea id="ai-prompt" rows="4" oninput="app.syncPrompt()" placeholder="You map … columns to a fixed schema. …" class="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-[13px] font-mono"></textarea>
+                    </div>
+                </section>
+
             </div>
         </div>
 
@@ -241,6 +284,8 @@
             init() {
                 this.renderFields();
                 this.renderRequireAny();
+                this.renderReconcileInputs();
+                this.renderPromptInput();
                 this.updatePreview();
             }
 
@@ -251,9 +296,66 @@
             }
 
             updatePreview() {
+                this.renderReconcileSelects();
+                this.renderGated();
                 const json = JSON.stringify(this.data, null, 2);
                 document.getElementById('json-preview').textContent = json;
                 document.getElementById('char-count').textContent = `${json.length} chars`;
+            }
+
+            // --- Reconcile / Gated / AI-prompt controls ---
+            _fieldNames() {
+                return (this.data.output_schema || []).map(f => f.field).filter(Boolean);
+            }
+            renderReconcileSelects() {
+                const rc = this.data.reconcile || {};
+                const opts = '<option value="">—</option>' +
+                    this._fieldNames().map(f => `<option value="${f}">${f}</option>`).join('');
+                [['rc-negative', 'negative'], ['rc-positive', 'positive']].forEach(([id, key]) => {
+                    const sel = document.getElementById(id);
+                    if (sel) { sel.innerHTML = opts; sel.value = rc[key] || ''; }
+                });
+            }
+            renderReconcileInputs() {
+                const rc = this.data.reconcile || {};
+                const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+                set('rc-signed', rc.signed); set('rc-direction', rc.direction);
+                set('rc-negvals', (rc.negative_values || []).join(', '));
+                set('rc-posvals', (rc.positive_values || []).join(', '));
+            }
+            syncReconcile() {
+                const g = id => document.getElementById(id).value;
+                const signed = g('rc-signed').trim();
+                if (!signed) { delete this.data.reconcile; this.updatePreview(); return; }
+                const rc = { signed, negative: g('rc-negative') || 'debit', positive: g('rc-positive') || 'credit' };
+                const dir = g('rc-direction').trim(); if (dir) rc.direction = dir;
+                const nv = g('rc-negvals').split(',').map(s => s.trim()).filter(Boolean); if (nv.length) rc.negative_values = nv;
+                const pv = g('rc-posvals').split(',').map(s => s.trim()).filter(Boolean); if (pv.length) rc.positive_values = pv;
+                this.data.reconcile = rc;
+                this.updatePreview();
+            }
+            renderGated() {
+                const box = document.getElementById('gated-container'); if (!box) return;
+                const fields = this._fieldNames();
+                const gated = new Set(this.data.gated_fields || []);
+                box.innerHTML = fields.length ? fields.map(f =>
+                    `<label class="inline-flex items-center gap-1.5 text-[13px] border border-slate-200 rounded-full px-3 py-1 cursor-pointer bg-white hover:bg-slate-50">
+                        <input type="checkbox" ${gated.has(f) ? 'checked' : ''} onchange="app.syncGated('${f}', this.checked)"> ${f}
+                     </label>`).join('') : '<span class="text-xs text-slate-400">Add fields first.</span>';
+            }
+            syncGated(field, checked) {
+                const g = new Set(this.data.gated_fields || []);
+                if (checked) g.add(field); else g.delete(field);
+                if (g.size) this.data.gated_fields = [...g]; else delete this.data.gated_fields;
+                this.updatePreview();
+            }
+            renderPromptInput() {
+                const e = document.getElementById('ai-prompt'); if (e) e.value = this.data.ai_system_prompt || '';
+            }
+            syncPrompt() {
+                const v = document.getElementById('ai-prompt').value;
+                if (v.trim()) this.data.ai_system_prompt = v; else delete this.data.ai_system_prompt;
+                this.updatePreview();
             }
 
             showToast(msg) {

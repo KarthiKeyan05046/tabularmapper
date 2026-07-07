@@ -164,12 +164,17 @@
                     <h2 class="text-base font-semibold">
                         <i class="fa-solid fa-diagram-project text-brand mr-2"></i>Column mapping
                     </h2>
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
                         <span id="headerRow" class="text-xs text-slate-500"></span>
+                        <select id="downloadFormat" title="Download format"
+                                class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white text-slate-600">
+                            <option value="file">.xlsx</option>
+                            <option value="json">.json</option>
+                        </select>
                         <button id="downloadBtn"
                                 class="border border-slate-300 hover:border-brand hover:text-brand text-slate-600 font-medium px-4 py-1.5 rounded-lg text-sm inline-flex items-center gap-2">
                             <i class="fa-solid fa-download"></i>
-                            <span>Download mapped .xlsx</span>
+                            <span>Download</span>
                         </button>
                     </div>
                 </div>
@@ -564,9 +569,10 @@
             downloadBtn.disabled = true;
             try {
                 const t = clampThreshold(thresholdNum.value);
+                const fmt = document.getElementById('downloadFormat').value;   // 'file' | 'json'
                 const fd = new FormData();
                 fd.append('file', selectedFile);
-                const resp = await fetch(`${API_BASE}map?format=file&threshold=${t}`, {
+                const resp = await fetch(`${API_BASE}map?format=${fmt}&threshold=${t}`, {
                     method: 'POST', body: fd,
                 });
                 if (!resp.ok) {
@@ -574,12 +580,20 @@
                     try { const j = await resp.json(); if (j.detail) detail = j.detail; } catch (_) {}
                     throw new Error(detail);
                 }
-                const blob = await resp.blob();
                 const stem = selectedFile.name.replace(/\.[^.]+$/, '');
+                let blob, ext;
+                if (fmt === 'json') {
+                    const j = await resp.json();
+                    blob = new Blob([JSON.stringify(j.transactions || [], null, 2)], { type: 'application/json' });
+                    ext = 'json';
+                } else {
+                    blob = await resp.blob();
+                    ext = 'xlsx';
+                }
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `${stem}_mapped.xlsx`;
+                a.download = `${stem}_mapped.${ext}`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();

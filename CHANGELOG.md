@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Config-builder UI controls** for the config keys that had no editor:
+  **Reconcile** (signed + the new direction/flag mode, with negative/positive
+  fields and flag-value lists), **Gated fields** (checkboxes), and an **AI system
+  prompt** textarea — all feeding the live `config.json` preview. The test page
+  gains a **download-format selector** (.xlsx / .json).
 - **Direction-column reconcile.** `reconcile` now supports an unsigned `amount`
   column paired with a separate direction/flag column (e.g. `Type` = DEBIT/CREDIT,
   or a `DR/CR` column): `reconcile: {signed, negative, positive, direction,
