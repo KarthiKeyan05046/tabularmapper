@@ -1,0 +1,29 @@
+# tabularmapper — runtime dependencies
+# The canonical source is pyproject.toml. This file mirrors the CORE deps so you
+# can `pip install -r requirements.txt`. For the package itself use:
+#     pip install tabularmapper            (from PyPI)
+#     pip install -e .                     (from a checkout)
+#
+# The core engine makes ZERO network calls and needs no database driver.
+
+openpyxl>=3.1
+rapidfuzz>=3.0
+python-dateutil>=2.8
+
+# --- Optional features (uncomment what you need, or `pip install tabularmapper[...]`) ---
+
+# FastAPI router  ->  tabularmapper.api  (GET /mapper/*, config builder, /test page)
+# fastapi>=0.110
+# python-multipart>=0.0.9
+
+# Persistent cache / learn-store backends (pick one; SQLite needs nothing extra)
+# redis>=5.0                 # redis:// / rediss://
+# valkey>=6.0                # valkey:// / valkeys://  (e.g. Aiven)
+# psycopg[binary]>=3.1       # postgresql://
+
+# Auto-load .env in the CLI
+# python-dotenv>=1.0
+
+# The AI column matcher needs NO SDK — it uses the standard library (urllib) to
+# call any OpenAI-compatible endpoint (OpenAI / OpenRouter / Ollama / vLLM / ...).
+# Configure it with OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL.
