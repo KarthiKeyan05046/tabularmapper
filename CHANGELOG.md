@@ -12,6 +12,11 @@ Nothing yet.
 ## [1.0.10] — 2026-07-07
 
 ### Added
+- **Config-driven learn-store gating.** `gated_fields` is now a config key (and
+  parsed by `config_from_dict` / emitted by `config_to_dict`); the library gates
+  **nothing** by default. `bank_preset()` opts into `["debit","credit"]`, and the
+  FastAPI learn store reads `gated_fields` from the active config instead of the
+  previously hardcoded debit/credit.
 - **Config-builder UI controls** for the config keys that had no editor:
   **Reconcile** (signed + the new direction/flag mode, with negative/positive
   fields and flag-value lists), **Gated fields** (checkboxes), and an **AI system

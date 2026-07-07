@@ -36,7 +36,7 @@ from .stores import open_store
 # URL) to a path / redis:// / valkey:// / postgresql:// for persistence.
 _DEFAULT_URL = "memory://"
 _KEY = "learned"
-_DEFAULT_GATED = frozenset({"debit", "credit"})
+_DEFAULT_GATED = frozenset()  # general default: gate nothing; opt in via config
 
 
 def _norm(s) -> str:

@@ -31,7 +31,22 @@ def _reset():
 
 
 def _store():
-    return LearnStore("memory://")
+    # gating is opt-in now (a general mapper gates nothing); these tests exercise
+    # the gated debit/credit behaviour, so they declare it explicitly.
+    return LearnStore("memory://", gated_fields={"debit", "credit"})
+
+
+def test_default_store_gates_nothing():
+    """General-mapper default: no gated fields, so even 'debit' auto-applies —
+    debit/credit gating is no longer baked into the library."""
+    s = LearnStore("memory://")            # no gated_fields
+    assert s.add("outgoing", "debit", source="ai") == "learned"
+    assert "outgoing" in s.synonyms()["debit"]
+    assert s.pending() == []
+
+
+def test_bank_preset_declares_gated_fields():
+    assert set(bank_preset().gated_fields) == {"debit", "credit"}
 
 
 def test_non_gated_field_auto_applies():

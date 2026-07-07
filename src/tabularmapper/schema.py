@@ -148,6 +148,7 @@ class Config:
     continuation_field: Optional[str] = None                # multi-line fold target
     extra_field_descriptions: dict = _field(default_factory=dict)  # non-output field defs
     ai_system_prompt: Optional[str] = None                  # override the AI matcher's system prompt
+    gated_fields: list = _field(default_factory=list)       # learn-store review queue (opt-in)
 
     # -- derived views the engine consumes --
     @property
@@ -221,6 +222,7 @@ def bank_preset() -> Config:
         row_keep_if_any=list(BANK_ROW_KEEP_IF_ANY),
         continuation_field=BANK_CONTINUATION_FIELD,
         extra_field_descriptions=dict(BANK_FIELD_DESCRIPTIONS),
+        gated_fields=["debit", "credit"],
     )
 
 
@@ -261,6 +263,7 @@ def config_from_dict(d: dict, _origin: str = "<dict>") -> Config:
         continuation_field=d.get("continuation_field"),
         extra_field_descriptions=dict(d.get("field_descriptions") or {}),
         ai_system_prompt=d.get("ai_system_prompt"),
+        gated_fields=list(d.get("gated_fields") or []),
     )
 
 
@@ -341,5 +344,6 @@ def config_to_dict(cfg: Config) -> dict:
         "continuation_field": cfg.continuation_field,
         "field_descriptions": dict(cfg.extra_field_descriptions),
         **({"ai_system_prompt": cfg.ai_system_prompt} if cfg.ai_system_prompt else {}),
+        **({"gated_fields": list(cfg.gated_fields)} if cfg.gated_fields else {}),
         "synonyms": {k: list(v) for k, v in cfg.synonyms.items()},
     }

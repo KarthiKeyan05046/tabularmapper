@@ -82,9 +82,10 @@ def build_matcher():
 
 
 def build_learn_store():
-    """Self-learning vocabulary store (URL via TABULARMAPPER_LEARN_STORE)."""
+    """Self-learning vocabulary store (URL via TABULARMAPPER_LEARN_STORE). Gated
+    fields come from the active config (`gated_fields`), not hardcoded."""
     from .learn import LearnStore
-    return LearnStore()
+    return LearnStore(gated_fields=engine._ACTIVE_CONFIG.gated_fields)
 
 
 class _State:
