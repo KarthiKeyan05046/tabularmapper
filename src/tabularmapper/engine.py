@@ -1075,11 +1075,67 @@ def process_stream(
 # --------------------------------------------------------------------------
 # Internal sheet reader
 # --------------------------------------------------------------------------
-def _read_sheet(path: str) -> list[list]:
-    # `src` may be a filesystem path OR a binary file-like object (BytesIO) —
-    # openpyxl accepts both, so uploads can be read straight from memory.
+_OLE2_MAGIC = b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"   # legacy .xls (compound file)
+
+
+def _is_xls(src) -> bool:
+    """True if `src` is a legacy binary .xls (not the OOXML .xlsx). Detects by
+    extension for a path, or by the OLE2 magic bytes for a stream/bytes."""
+    if isinstance(src, str):
+        return src.lower().endswith(".xls")
+    try:
+        if hasattr(src, "read"):
+            pos = src.tell(); head = src.read(8); src.seek(pos)
+        else:
+            head = bytes(src[:8])
+        return head[:8] == _OLE2_MAGIC
+    except Exception:
+        return False
+
+
+def _read_xls(src) -> list[list]:
+    """Read a legacy .xls via xlrd (optional dep) into the same rows shape openpyxl
+    produces — dates become datetime, blanks None."""
+    try:
+        import xlrd
+    except ImportError as e:
+        raise ImportError(
+            "Reading legacy .xls files needs the 'xlrd' package. Install it with:  "
+            "pip install tabularmapper[xls]   (or  pip install 'xlrd>=2.0'). "
+            "Modern .xlsx files need nothing extra."
+        ) from e
+    if isinstance(src, str):
+        book = xlrd.open_workbook(src)
+    else:
+        data = src.read() if hasattr(src, "read") else bytes(src)
+        book = xlrd.open_workbook(file_contents=data)
+    sheet = book.sheet_by_index(0)          # .xls has no reliable "active" flag -> first sheet
+    rows: list[list] = []
+    for r in range(sheet.nrows):
+        row = []
+        for c in range(sheet.ncols):
+            cell = sheet.cell(r, c)
+            v = cell.value
+            if cell.ctype == xlrd.XL_CELL_DATE:
+                try:
+                    v = xlrd.xldate_as_datetime(v, book.datemode)
+                except Exception:
+                    v = None
+            elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK, xlrd.XL_CELL_ERROR):
+                v = None
+            row.append(v)
+        rows.append(row)
+    return rows
+
+
+def _read_sheet(src) -> list[list]:
+    # `src` may be a filesystem path OR a binary file-like object (BytesIO).
+    # openpyxl handles .xlsx/.xlsm (both); .xls is a different binary format and
+    # is routed to xlrd (optional [xls] extra).
+    if _is_xls(src):
+        return _read_xls(src)
     import openpyxl
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
     ws = wb.active
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
     wb.close()

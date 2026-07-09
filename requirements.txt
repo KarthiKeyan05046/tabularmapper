@@ -16,6 +16,9 @@ python-dateutil>=2.8
 # fastapi>=0.110
 # python-multipart>=0.0.9
 
+# Read legacy .xls files (the old binary format; openpyxl only reads .xlsx/.xlsm)
+# xlrd>=2.0
+
 # Persistent cache / learn-store backends (pick one; SQLite needs nothing extra)
 # redis>=5.0                 # redis:// / rediss://
 # valkey>=6.0                # valkey:// / valkeys://  (e.g. Aiven)

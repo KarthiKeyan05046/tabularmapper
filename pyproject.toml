@@ -39,6 +39,7 @@ dependencies = [
 # OpenAI-compatible endpoint — no SDK dependency. Set OPENAI_API_KEY etc.
 [project.optional-dependencies]
 api = ["fastapi>=0.110", "python-multipart>=0.0.9"]   # FastAPI router
+xls = ["xlrd>=2.0"]                                     # read legacy .xls files
 redis = ["redis>=5.0"]                                 # redis:// cache/learn store
 valkey = ["valkey>=6.0"]                               # valkey:// (Redis fork, e.g. Aiven)
 postgres = ["psycopg[binary]>=3.1"]                    # postgresql:// store

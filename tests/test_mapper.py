@@ -436,6 +436,30 @@ def test_direction_reconcile_missing_flag_flags_review(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# Legacy .xls support (routed to xlrd; openpyxl can't read .xls)
+# --------------------------------------------------------------------------
+def test_reads_legacy_xls_file():
+    """A .xls (old binary format) must map like a .xlsx — routed to xlrd by both
+    extension (path) and OLE2 magic (stream)."""
+    pytest.importorskip("xlrd")
+    p = os.path.join(FIX, "legacy_sample.xls")
+    if not os.path.exists(p):
+        pytest.skip("legacy .xls fixture not present")
+    res = process_file(p)
+    assert len(res.records) == 3
+    assert res.needs_review is False
+    recs = {r["description"]: r for r in res.records}
+    assert recs["UPI PAYMENT"]["debit"] == 1299.50
+    assert recs["SALARY"]["credit"] == 45000.0
+    assert recs["OPENING BALANCE"]["date"] == "2025-06-01"     # date-formatted cell
+    # same file as bytes -> detected via OLE2 magic, not extension
+    from tabularmapper.engine import process_stream
+    with open(p, "rb") as fh:
+        r2 = process_stream(fh.read())
+    assert len(r2.records) == 3
+
+
+# --------------------------------------------------------------------------
 # Real-world files (present in repo root)
 # --------------------------------------------------------------------------
 def test_real_payir_header_deep():

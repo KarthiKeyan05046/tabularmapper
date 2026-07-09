@@ -384,8 +384,9 @@ must `load_dotenv()` yourself** or export them in the environment.
 - **AI accuracy tracks the model.** A small local ≤8B model is unreliable at column
   mapping; use a `gpt-4o-mini`/`gemini-flash`/`haiku`-class model or Kimi K2. Rich
   synonyms keep AI off the critical path so the model rarely matters.
-- **Tabular `.xlsx` only.** This maps spreadsheet columns; it is not OCR for scanned
-  PDFs or a parser for free-text statements.
+- **Tabular spreadsheets only.** Reads `.xlsx`/`.xlsm` out of the box and legacy
+  `.xls` when the `xlrd` extra is installed (`pip install tabularmapper[xls]`). It
+  is not OCR for scanned PDFs or a parser for free-text statements.
 
 ---
 

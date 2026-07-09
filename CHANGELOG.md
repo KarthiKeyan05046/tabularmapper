@@ -12,6 +12,10 @@ Nothing yet.
 ## [1.0.10] — 2026-07-07
 
 ### Added
+- **Legacy `.xls` support.** The old binary `.xls` format is now read via `xlrd`
+  (optional extra: `pip install tabularmapper[xls]`), routed automatically by file
+  extension (path) or OLE2 magic bytes (stream). `openpyxl` only reads
+  `.xlsx`/`.xlsm`; `.xls` needs the extra. `.xlsx` behaviour is unchanged.
 - **Config-driven learn-store gating.** `gated_fields` is now a config key (and
   parsed by `config_from_dict` / emitted by `config_to_dict`); the library gates
   **nothing** by default. `bank_preset()` opts into `["debit","credit"]`, and the
