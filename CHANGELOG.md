@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [1.0.10] — 2026-07-07
+## [1.0.11] — 2026-07-07
 
 ### Added
 - **Legacy `.xls` support.** The old binary `.xls` format is now read via `xlrd`
@@ -21,6 +21,14 @@ Nothing yet.
   **nothing** by default. `bank_preset()` opts into `["debit","credit"]`, and the
   FastAPI learn store reads `gated_fields` from the active config instead of the
   previously hardcoded debit/credit.
+
+### Docs
+- Documented reconcile direction mode, `gated_fields`, and `ai_system_prompt` in
+  the README and how-it-works config-key tables; added `requirements.txt`.
+
+## [1.0.10] — 2026-07-07
+
+### Added
 - **Config-builder UI controls** for the config keys that had no editor:
   **Reconcile** (signed + the new direction/flag mode, with negative/positive
   fields and flag-value lists), **Gated fields** (checkboxes), and an **AI system
@@ -194,7 +202,10 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.8...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.11...HEAD
+[1.0.11]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.10...v1.0.11
+[1.0.10]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.9...v1.0.10
+[1.0.9]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.5...v1.0.6
