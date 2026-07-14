@@ -56,7 +56,15 @@ rows = res.records                       # list[dict], one per row
 
 # from bytes (e.g. an upload) — parsed in memory, nothing written to disk
 res = process_stream(open("file.xlsx", "rb").read())
+
+# from a base64 string (e.g. a JSON payload) — decode, then reuse process_stream
+from tabularmapper import decode_base64
+res = process_stream(decode_base64(payload))   # payload: base64 str/bytes or data: URL
 ```
+
+Three ways in — `process_file` (path), `process_stream` (bytes / file-like), and
+`decode_base64(...) → bytes` fed to `process_stream`. All share one parse path, so
+`.xls` vs `.xlsx` is auto-detected regardless of how the bytes arrived.
 
 There is **no default schema** — call `configure(...)` with your own config or a
 preset first, otherwise nothing is mapped ([Custom schema](#custom-output-schema)).
@@ -409,6 +417,7 @@ Top-level (`from tabularmapper import ...`):
 |---|---|---|
 | `process_file(path, *, output_format="file", cache=None, table_matcher=None, learn_store=None, threshold=80)` | fn | map a file → `ProcessResult` |
 | `process_stream(data, *, output_format="records", cache=None, ...)` | fn | map bytes / a binary stream |
+| `decode_base64(data) → bytes` | fn | decode a base64 str/bytes (or `data:` URL) → raw bytes for `process_stream`; `ValueError` if not base64 |
 | `MappingCache("<url>")` | class | layout cache; `.get/.put/.close` (sync). No arg → env/sqlite |
 | `LearnStore("<url>")` | class | learned synonyms; `.synonyms/.pending/.approve/.reject/.add/.close` |
 | `configure(source=None, config=None)` | fn | load output template + synonyms (call once at startup) |

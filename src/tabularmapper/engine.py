@@ -1072,6 +1072,37 @@ def process_stream(
                 scan_limit, threshold, cache, output_format, learn_store)
 
 
+def decode_base64(data) -> bytes:
+    """Decode a base64 string (or base64 bytes) of a spreadsheet into raw bytes,
+    ready to hand to `process_stream` — a base64 input path without a second
+    process wrapper: `process_stream(decode_base64(payload))`.
+
+    Whitespace and newlines are tolerated, and a `data:...;base64,` URL prefix is
+    stripped if present. `.xls` vs `.xlsx` is still detected downstream from the
+    decoded magic bytes, so no filename is needed. Raises `ValueError` if the
+    input isn't valid base64 or decodes to nothing.
+    """
+    import base64 as _b64
+    import binascii
+    if isinstance(data, str):
+        s = data.strip()
+        if s[:5].lower() == "data:":            # data URL -> keep the payload only
+            s = s.split(",", 1)[-1]
+        s = "".join(s.split())                  # drop embedded whitespace/newlines
+        src = s.encode("ascii", "ignore")
+    elif isinstance(data, (bytes, bytearray)):
+        src = bytes(data)
+    else:
+        raise TypeError("decode_base64 expects a base64 str or bytes")
+    try:
+        decoded = _b64.b64decode(src, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("decode_base64: input is not valid base64") from exc
+    if not decoded:
+        raise ValueError("decode_base64: input decoded to empty bytes")
+    return decoded
+
+
 # --------------------------------------------------------------------------
 # Internal sheet reader
 # --------------------------------------------------------------------------

@@ -1,67 +1,36 @@
 {
-  "version": 1,
   "output_schema": [
     {
       "field": "date",
       "header": "Date",
       "type": "date",
-      "description": "the transaction date (post/value/booking date)"
+      "description": "The date the transaction was posted or executed. May appear as transaction date, value date, or posting date in source data — these can differ by 1-2 days for the same transaction; prefer transaction/posting date over value date unless the source only provides one."
     },
     {
-      "field": "description",
+      "field": "narration",
       "header": "Narration",
-      "type": "text",
-      "description": "free-text narration / particulars / details of the transaction"
+      "type": "string",
+      "description": "Free-text description of the transaction, such as the payee, purpose, or transaction type (e.g., 'NEFT TRANSFER TO XYZ', 'ATM WITHDRAWAL'). Often the longest and most variably formatted field in the source; do not truncate or attempt to parse structured data out of it unless separately instructed."
     },
     {
-      "field": "reference",
+      "field": "reference_number",
       "header": "Reference Number",
-      "type": "text",
-      "description": "reference or cheque/UTR/instrument number identifying the entry"
+      "type": "string",
+      "description": "A unique identifier for the transaction, such as a cheque number, UTR, RRN, or transaction ID. Frequently blank for cash, UPI, or POS transactions — absence is normal and should not be treated as a mapping failure."
     },
     {
       "field": "debit",
       "header": "Debit",
-      "type": "money",
-      "description": "money leaving the account (withdrawal / paid out); a debit-only column"
+      "type": "currency",
+      "description": "Amount withdrawn or paid out in this transaction. Should be blank or zero if the transaction is a credit. Strip currency symbols and thousand separators before parsing to numeric."
     },
     {
       "field": "credit",
       "header": "Credit",
-      "type": "money",
-      "description": "money entering the account (deposit / paid in); a credit-only column"
-    },
-    {
-      "field": "balance",
-      "header": "Balance",
-      "type": "money",
-      "description": "running account balance after the transaction"
+      "type": "currency",
+      "description": "Amount deposited or received in this transaction. Should be blank or zero if the transaction is a debit. Strip currency symbols and thousand separators before parsing to numeric."
     }
   ],
-  "critical_fields": [
-    "date"
-  ],
-  "reconcile": {
-    "signed": "amount",
-    "negative": "debit",
-    "positive": "credit"
-  },
-  "require_any": [
-    [
-      "debit",
-      "credit",
-      "amount"
-    ]
-  ],
-  "row_keep_if_any": [
-    "date",
-    "debit",
-    "credit"
-  ],
-  "continuation_field": "description",
-  "field_descriptions": {
-    "amount": "a SINGLE signed amount column (one column, +credit / -debit)"
-  },
   "synonyms": {
     "date": [
       "date",
@@ -69,111 +38,118 @@
       "transaction date",
       "value date",
       "posting date",
-      "post date",
-      "tran date",
+      "entry date",
+      "book date",
       "date of transaction",
       "trans date",
-      "dt",
-      "booking date",
-      "entry date"
+      "value dt",
+      "txn dt",
+      "date/time",
+      "date & time"
     ],
-    "description": [
-      "description",
+    "narration": [
       "narration",
+      "description",
       "particulars",
+      "transaction details",
+      "transaction description",
       "details",
       "remarks",
-      "transaction details",
-      "transaction remarks",
-      "narrative",
       "memo",
-      "transaction description",
-      "txn description",
-      "notes",
-      "purpose"
+      "transaction narration",
+      "particulars/remarks",
+      "desc",
+      "transaction particulars",
+      "purpose",
+      "comments",
+      "notes"
     ],
-    "reference": [
-      "reference",
+    "reference_number": [
       "reference number",
-      "reference no",
       "ref no",
-      "ref no.",
-      "ref no./cheque no",
-      "ref no./cheque no.",
+      "ref number",
+      "reference no",
+      "reference",
       "cheque no",
-      "cheque no.",
+      "cheque number",
       "chq no",
-      "chq no.",
-      "ref",
-      "reference id",
+      "chq number",
+      "instrument no",
+      "instrument number",
+      "transaction id",
+      "txn id",
+      "transaction reference",
+      "transaction ref no",
       "utr",
       "utr no",
-      "instrument no",
+      "utr number",
+      "rrn",
+      "rrn number",
       "cheque/ref no",
-      "chq/ref no",
-      "transaction id",
-      "ref/cheque no"
+      "cheque/ref number",
+      "doc no",
+      "document number",
+      "voucher no",
+      "voucher number",
+      "receipt no",
+      "receipt number",
+      "transaction reference number"
     ],
     "debit": [
       "debit",
-      "withdrawal",
-      "withdrawals",
-      "withdrawal amt",
-      "withdrawal amount",
-      "withdrawal (dr)",
-      "dr",
-      "dr amount",
       "debit amount",
       "debit amt",
-      "paid out",
-      "payments",
-      "money out",
+      "withdrawal",
+      "withdrawal amount",
+      "withdrawal amt",
+      "dr",
+      "dr amount",
       "amount debited",
-      "outflow",
+      "amount withdrawn",
+      "paid out",
+      "debit (dr)",
       "debit(dr)",
-      "withdrawal amt."
+      "outflow",
+      "money out",
+      "payment",
+      "debits"
     ],
     "credit": [
       "credit",
-      "deposit",
-      "deposits",
-      "deposit amt",
-      "deposit amount",
-      "deposit (cr)",
-      "cr",
-      "cr amount",
       "credit amount",
       "credit amt",
-      "paid in",
-      "receipts",
-      "money in",
+      "deposit",
+      "deposit amount",
+      "deposit amt",
+      "cr",
+      "cr amount",
       "amount credited",
-      "inflow",
+      "amount deposited",
+      "paid in",
+      "credit (cr)",
       "credit(cr)",
-      "deposit amt."
+      "inflow",
+      "money in",
+      "receipt",
+      "credits"
     ],
-    "balance": [
-      "balance",
-      "closing balance",
-      "running balance",
-      "available balance",
-      "balance amount",
-      "bal",
-      "closing bal",
-      "ledger balance",
-      "book balance",
-      "balance (inr)"
-    ],
-    "amount": [
-      "amount",
-      "transaction amount",
-      "txn amount",
-      "amt",
-      "value",
-      "signed amount",
-      "amount (inr)",
-      "amount(dr/cr)",
-      "transaction amt"
+    "amount":  ["amount","amt","amount (inr)","txn amount"],
+    "dctype":  ["type","dr/cr","cr/dr","d/c","debit/credit","transaction type"]
+  },
+  "critical_fields": [
+    "date"
+  ],
+  "require_any": [
+    [
+      "debit",
+      "credit",
+      "amount"
     ]
+  ],
+  "reconcile": {
+    "signed": "amount",
+    "negative": "debit",
+    "positive": "credit", 
+    "direction": "dctype"
   }
 }

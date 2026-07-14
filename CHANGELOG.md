@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.12] — 2026-07-14
+
+### Added
+- **`decode_base64(data) → bytes`.** A base64 input path without a fourth
+  `process_*` wrapper: decode a base64 string/bytes (or a `data:...;base64,` URL)
+  into raw spreadsheet bytes and feed them to `process_stream` —
+  `process_stream(decode_base64(payload))`. It tolerates whitespace/newlines,
+  strips a data-URL prefix, and raises `ValueError` on non-base64 or empty input.
+  `.xls` vs `.xlsx` is still auto-detected downstream from the decoded magic
+  bytes, so no filename is needed. Library-only — no new API route or UI.
+
+### Docs
+- README quickstart + API table and `how-it-works.md` §4 now show all three
+  input methods side by side (`process_file` path / `process_stream` bytes /
+  `decode_base64` → `process_stream`).
+
 ## [1.0.11] — 2026-07-07
 
 ### Added
@@ -202,7 +218,8 @@ the engine itself is domain-agnostic.
 - MIT licensed, installable package (`pip install tabularmapper`; extras
   `[api] [redis] [valkey] [postgres] [dotenv]`).
 
-[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.11...HEAD
+[Unreleased]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.12...HEAD
+[1.0.12]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/KarthiKeyan05046/tabularmapper/compare/v1.0.8...v1.0.9
