@@ -29,6 +29,7 @@ from .engine import (
     ProcessResult,
     apply_learned,
     configure,
+    decode_base64,
     detect_header_row,
     map_columns,
     normalize_amount,
@@ -44,11 +45,12 @@ from .schema import (
 )
 from .stores import open_store
 
-__version__ = "1.0.11"
+__version__ = "1.0.12"
 
 __all__ = [
     "process_file",
     "process_stream",
+    "decode_base64",
     "records_to_csv_bytes",
     "configure",
     "apply_learned",

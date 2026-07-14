@@ -130,6 +130,23 @@ print(result.records)               # the clean rows, as a list of dictionaries
 print(result.needs_review)          # True/False
 ```
 
+The bytes can arrive three ways — all feed the same parser (so `.xls` vs `.xlsx`
+is auto-detected however they come in):
+
+```python
+from tabularmapper import process_file, process_stream, decode_base64
+
+process_file("statement.xlsx")                     # a path on disk
+process_stream(open("statement.xlsx", "rb").read())# raw bytes / a binary stream (e.g. an upload)
+process_stream(decode_base64(payload))             # a base64 string / bytes / data: URL
+```
+
+`decode_base64` only does the base64 part — it tolerates whitespace, newlines and a
+`data:...;base64,` prefix, returns raw bytes, and raises `ValueError` if the input
+isn't valid base64. It deliberately isn't a fourth `process_*` function: base64 is
+just an encoding of the same bytes `process_stream` already takes, so it's one
+composable line instead of a duplicated wrapper.
+
 ### B) The command line (no code at all)
 
 ```bash

@@ -190,6 +190,33 @@ def test_process_stream_from_bytes_matches_path():
         assert res.needs_review is False
 
 
+def test_decode_base64_feeds_process_stream():
+    import base64
+    import pytest
+    from tabularmapper.engine import decode_base64, process_stream
+    p = os.path.join(FIX, "01_junk_split.xlsx")
+    with open(p, "rb") as fh:
+        raw = fh.read()
+    ref = process_file(p)
+
+    b64 = base64.b64encode(raw).decode("ascii")
+    for arg in (b64,                                   # plain string
+                "  " + b64 + "\n",                     # whitespace-padded
+                base64.b64encode(raw),                 # base64 bytes
+                "data:application/vnd.ms-excel;base64," + b64):  # data URL
+        assert decode_base64(arg) == raw               # round-trips to original bytes
+        res = process_stream(decode_base64(arg))       # the intended usage
+        assert res.header_index == ref.header_index
+        assert _fields(res) == _fields(ref)
+        assert res.records == ref.records
+        assert res.needs_review is False
+
+    with pytest.raises(ValueError):
+        decode_base64("not!valid!base64!!")
+    with pytest.raises(ValueError):
+        decode_base64("")
+
+
 # --------------------------------------------------------------------------
 # AI table matcher (mocked transport — NO network in tests)
 # --------------------------------------------------------------------------
