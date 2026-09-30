@@ -1152,9 +1152,8 @@ def _read_xls(src) -> list[list]:
         import xlrd
     except ImportError as e:
         raise ImportError(
-            "Reading legacy .xls files needs the 'xlrd' package. Install it with:  "
-            "pip install tabularmapper[xls]   (or  pip install 'xlrd>=2.0'). "
-            "Modern .xlsx files need nothing extra."
+            "Reading legacy .xls files needs the 'xlrd' package. "
+            "Install it with:  pip install 'xlrd>=2.0'"
         ) from e
     try:
         if isinstance(src, str):

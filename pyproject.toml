@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tabularmapper"
-version = "1.0.13"
+version = "1.0.14"
 description = "Map any spreadsheet (.xlsx) to a schema you define — deterministic column mapping with an optional AI matcher"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -33,13 +33,14 @@ dependencies = [
     "openpyxl>=3.1",
     "rapidfuzz>=3.0",
     "python-dateutil>=2.8",
+    "xlrd>=2.0",
 ]
 
 # The AI table matcher uses only the standard library (urllib) to call any
 # OpenAI-compatible endpoint — no SDK dependency. Set OPENAI_API_KEY etc.
 [project.optional-dependencies]
 api = ["fastapi>=0.110", "python-multipart>=0.0.9"]   # FastAPI router
-xls = ["xlrd>=2.0"]                                     # read legacy .xls files
+xls = ["xlrd>=2.0"]                                     # kept for backwards compat
 redis = ["redis>=5.0"]                                 # redis:// cache/learn store
 valkey = ["valkey>=6.0"]                               # valkey:// (Redis fork, e.g. Aiven)
 postgres = ["psycopg[binary]>=3.1"]                    # postgresql:// store
