@@ -1124,9 +1124,30 @@ def _is_xls(src) -> bool:
         return False
 
 
+def _read_xls_tsv(src) -> list[list]:
+    """Read a tab-delimited text file masquerading as .xls (common bank export).
+    Cells that are whitespace-only are normalised to None."""
+    import io
+    if isinstance(src, str):
+        with open(src, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    elif hasattr(src, "read"):
+        raw = src.read()
+        text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else raw
+    else:
+        text = bytes(src).decode("utf-8", errors="replace")
+    rows = []
+    for line in text.splitlines():
+        cells = line.split("\t")
+        rows.append([c if c.strip() else None for c in cells])
+    return rows
+
+
 def _read_xls(src) -> list[list]:
     """Read a legacy .xls via xlrd (optional dep) into the same rows shape openpyxl
-    produces — dates become datetime, blanks None."""
+    produces — dates become datetime, blanks None.
+    Falls back to TSV parsing when the file has an .xls extension but is actually
+    a tab-delimited text export (common with SBI and other bank portals)."""
     try:
         import xlrd
     except ImportError as e:
@@ -1135,11 +1156,17 @@ def _read_xls(src) -> list[list]:
             "pip install tabularmapper[xls]   (or  pip install 'xlrd>=2.0'). "
             "Modern .xlsx files need nothing extra."
         ) from e
-    if isinstance(src, str):
-        book = xlrd.open_workbook(src)
-    else:
-        data = src.read() if hasattr(src, "read") else bytes(src)
-        book = xlrd.open_workbook(file_contents=data)
+    try:
+        if isinstance(src, str):
+            book = xlrd.open_workbook(src)
+        else:
+            data = src.read() if hasattr(src, "read") else bytes(src)
+            book = xlrd.open_workbook(file_contents=data)
+    except xlrd.XLRDError:
+        # File has .xls extension but is actually plain text (e.g. SBI tab-delimited export).
+        if not isinstance(src, str) and hasattr(src, "seek"):
+            src.seek(0)
+        return _read_xls_tsv(src)
     sheet = book.sheet_by_index(0)          # .xls has no reliable "active" flag -> first sheet
     rows: list[list] = []
     for r in range(sheet.nrows):
