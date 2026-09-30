@@ -29,6 +29,12 @@ run-command.txt
 # Real bank statements — never commit (privacy). Kept locally, untracked.
 samples/
 
+# Agent skill libraries — re-install via: npx skills add <repo> <skill-name> -y
+# Which skills to install is recorded in AGENTS.md under ## Agent skills
+.agents/
+.claude/
+skills-lock.json
+
 # OS
 .DS_Store
 
