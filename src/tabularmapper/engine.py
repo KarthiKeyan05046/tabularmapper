@@ -1192,7 +1192,14 @@ def _read_sheet(src) -> list[list]:
     if _is_xls(src):
         return _read_xls(src)
     import openpyxl
-    wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
+    try:
+        wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
+    except Exception:
+        # Stream is not a ZIP/xlsx — could be a tab-delimited text file passed
+        # as bytes (e.g. SBI .xls export decoded from base64).
+        if hasattr(src, "seek"):
+            src.seek(0)
+        return _read_xls_tsv(src)
     ws = wb.active
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
     wb.close()
